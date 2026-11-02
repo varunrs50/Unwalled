@@ -19,6 +19,9 @@
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Messages: read SMS threads and send texts from the SIM. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
     <!-- App names and icons for forwarded notifications. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 

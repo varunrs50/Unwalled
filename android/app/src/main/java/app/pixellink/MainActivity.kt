@@ -53,6 +53,7 @@ import app.pixellink.link.PairPayload
 import app.pixellink.link.PairingStore
 import app.pixellink.notifications.NotificationBridge
 import app.pixellink.notifications.TestNotifications
+import app.pixellink.sms.SmsBridge
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -87,7 +88,7 @@ class MainActivity : ComponentActivity() {
                 HomeScreen(
                     pendingPayload, resumeTick.intValue, onScan = ::scan,
                     onRequestPermissions = ::requestMissingPermissions,
-                    onRequestCallPermissions = { permissionRequest.launch(CallBridge.PERMISSIONS.toTypedArray()) },
+                    onRequestPermissionsFor = { permissionRequest.launch(it.toTypedArray()) },
                 )
             }
         }
@@ -141,7 +142,7 @@ fun HomeScreen(
     resumeTick: Int,
     onScan: () -> Unit,
     onRequestPermissions: () -> Unit,
-    onRequestCallPermissions: () -> Unit,
+    onRequestPermissionsFor: (List<String>) -> Unit,
 ) {
     val context = LocalContext.current
     val status by LinkState.status.collectAsState()
@@ -194,8 +195,8 @@ fun HomeScreen(
                     Spacer(Modifier.width(16.dp))
                     Text("Click Allow on ${s.macName} to finish pairing.")
                 }
-                is LinkStatus.Searching -> PairedContent(s.macName, connected = false, resumeTick, onRequestCallPermissions)
-                is LinkStatus.Connected -> PairedContent(s.macName, connected = true, resumeTick, onRequestCallPermissions)
+                is LinkStatus.Searching -> PairedContent(s.macName, connected = false, resumeTick, onRequestPermissionsFor)
+                is LinkStatus.Connected -> PairedContent(s.macName, connected = true, resumeTick, onRequestPermissionsFor)
             }
 
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -225,7 +226,7 @@ private fun NotPairedContent(onScan: () -> Unit, onPaste: (String) -> Unit) {
 }
 
 @Composable
-private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, onRequestCallPermissions: () -> Unit) {
+private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, onRequestPermissionsFor: (List<String>) -> Unit) {
     val context = LocalContext.current
     val ignoringBattery = remember(resumeTick) {
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
@@ -234,6 +235,9 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
     val callsAllowed = remember(resumeTick) {
         CallBridge.PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     }
+    val smsAllowed = remember(resumeTick) {
+        SmsBridge.PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -241,6 +245,7 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
             Text(if (connected) "Connected" else "Looking for your Mac on this Wi-Fi…")
             if (notificationsEnabled) Text("Notifications are shown on your Mac", style = MaterialTheme.typography.bodySmall)
             if (callsAllowed) Text("Calls are shown on your Mac", style = MaterialTheme.typography.bodySmall)
+            if (smsAllowed) Text("Text messages are on your Mac", style = MaterialTheme.typography.bodySmall)
         }
     }
 
@@ -259,7 +264,16 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("See who's calling on your Mac, answer or decline from there, and call contacts from the Mac. Call audio stays on the phone.")
-                Button(onClick = onRequestCallPermissions) { Text("Allow calls") }
+                Button(onClick = { onRequestPermissionsFor(CallBridge.PERMISSIONS) }) { Text("Allow calls") }
+            }
+        }
+    }
+
+    if (!smsAllowed) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Read and send your text messages from the Mac. Texts are sent from this phone's SIM.")
+                Button(onClick = { onRequestPermissionsFor(SmsBridge.PERMISSIONS) }) { Text("Allow messages") }
             }
         }
     }

@@ -24,6 +24,7 @@ import app.pixellink.MainActivity
 import app.pixellink.R
 import app.pixellink.calls.CallBridge
 import app.pixellink.notifications.NotificationBridge
+import app.pixellink.sms.SmsBridge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,7 @@ class LinkService : Service() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var batteryReceiver: BroadcastReceiver? = null
     private lateinit var calls: CallBridge
+    private lateinit var sms: SmsBridge
     @Volatile private var nudgeSocket: DatagramSocket? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -67,6 +69,7 @@ class LinkService : Service() {
         super.onCreate()
         store = PairingStore(this)
         calls = CallBridge(this, LinkBus::send)
+        sms = SmsBridge(this, LinkBus::send)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Connection to Mac", NotificationManager.IMPORTANCE_MIN)
         )
@@ -102,6 +105,7 @@ class LinkService : Service() {
         scope.cancel()
         nudgeSocket?.close()
         calls.stop()
+        sms.stop()
         frames?.close()
         networkCallback?.let { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) }
         batteryReceiver?.let { unregisterReceiver(it) }
@@ -256,6 +260,18 @@ class LinkService : Service() {
                     "call.dial" -> fs.send("call.result", calls.dial(frame.body.getString("number")), frame.id)
                     "calllog.request" -> fs.send("calllog.page", calls.callLog(frame.body.optInt("limit", 100)), frame.id)
                     "contacts.request" -> fs.send("contacts.list", calls.contacts(), frame.id)
+                    "sms.threads.request" -> fs.send("sms.threads", sms.threads(frame.body.optInt("limit", 200)), frame.id)
+                    "sms.messages.request" -> fs.send(
+                        "sms.messages",
+                        sms.messages(
+                            frame.body.getLong("thread"), frame.body.optInt("limit", 100),
+                            frame.body.optLong("before").takeIf { frame.body.has("before") },
+                        ),
+                        frame.id,
+                    )
+                    "sms.send" -> sms.sendSms(
+                        frame.body.getString("to"), frame.body.getString("body"), frame.body.getString("client_id"),
+                    )?.let { fs.send("sms.send.result", it, frame.id) }
                     else -> Unit
                 }
             }
@@ -266,12 +282,13 @@ class LinkService : Service() {
         }
     }
 
-    /** Call access can be granted at any time; when it is, tell the Mac to fetch the call log and contacts. */
+    /** Call and SMS access can be granted at any time; when it is, tell the Mac to fetch what it can now see. */
     private fun startCalls() {
         if (calls.start()) {
             LinkBus.send("calllog.changed", JSONObject())
             LinkBus.send("contacts.changed", JSONObject())
         }
+        if (sms.start()) LinkBus.send("sms.changed", JSONObject())
     }
 
     private fun sendStatus() {

@@ -45,6 +45,7 @@ final class AppModel {
 
     @ObservationIgnored let relay = NotificationRelay()
     @ObservationIgnored let calls = CallController()
+    @ObservationIgnored let messages = MessagesStore()
 
     @ObservationIgnored private var server: LinkServer?
     @ObservationIgnored private weak var session: PhoneConnection?
@@ -65,6 +66,7 @@ final class AppModel {
         relay.start()
         relay.send = { [weak self] type, body in self?.session?.send(type, body) }
         calls.send = { [weak self] type, body in self?.session?.send(type, body) }
+        messages.toPhone = { [weak self] type, body in self?.session?.send(type, body) }
         relay.onCallBack = { [weak self] number in self?.calls.dial(number) }
         #if DEBUG
         listenForDebugCommands()
@@ -248,6 +250,7 @@ final class AppModel {
             }
             conn.send("hello.ack", ["name": macName], replyTo: id)
             calls.refresh()
+            messages.refresh()
             Log.info("Hello from \(paired?.name ?? "phone")")
 
         case "status.update" where isPaired:
@@ -283,6 +286,21 @@ final class AppModel {
 
         case "calllog.changed" where isPaired:
             session?.send("calllog.request", ["limit": 200])
+
+        case "sms.threads" where isPaired:
+            messages.received(threads: body)
+
+        case "sms.messages" where isPaired:
+            messages.received(messages: body)
+
+        case "sms.updated" where isPaired:
+            messages.updated(body)
+
+        case "sms.send.result" where isPaired:
+            messages.sendResult(body)
+
+        case "sms.changed" where isPaired:
+            messages.refresh()
 
         case "contacts.changed" where isPaired:
             session?.send("contacts.request", [:])
@@ -334,6 +352,21 @@ extension AppModel {
                 case "silence": self.calls.silence()
                 default: if command.hasPrefix("dial:") { self.calls.dial(String(command.dropFirst(5))) }
                 }
+            }
+        }
+        // "…smsload" with object "<thread id>": load a conversation, as opening it in Messages does.
+        dnc.addObserver(forName: .init(prefix + "smsload"), object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated {
+                if let thread = (note.object as? String).flatMap(Int64.init) { self?.messages.load(thread) }
+            }
+        }
+        // "…sms" with object "<number>|<text>": send a text from the Mac.
+        dnc.addObserver(forName: .init(prefix + "sms"), object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let parts = (note.object as? String)?.split(separator: "|", maxSplits: 1), parts.count == 2 else { return }
+                let to = String(parts[0])
+                let thread = self.messages.threads.first { $0.addresses.contains { $0.filter(\.isNumber).hasSuffix(to.filter(\.isNumber).suffix(7)) } }?.id
+                self.messages.send(String(parts[1]), to: to, thread: thread)
             }
         }
         dnc.addObserver(forName: .init(prefix + "reply"), object: nil, queue: .main) { [weak self] note in

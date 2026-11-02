@@ -19,7 +19,7 @@ struct PixelLinkApp: App {
         .windowResizability(.contentSize)
 
         Window("Messages", id: "messages") {
-            PlaceholderView(title: "Messages", detail: "SMS threads arrive in milestone M4.")
+            MessagesView().environment(model)
         }
 
         Window("Calls", id: "calls") {

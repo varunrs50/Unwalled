@@ -149,6 +149,30 @@ Call audio always stays on the phone. These messages only show and control calls
 
 A ringing call can be reported twice: Android first reports the ring without the number, then again with it. The Mac updates the same `id` in place.
 
+### SMS (M4)
+
+Plain SMS only: Android doesn't let other apps read RCS chats or (yet) MMS content. Those still reach the Mac as notifications.
+
+| Type | Direction | Body |
+|---|---|---|
+| `sms.threads.request` | Mac → phone | `{limit}` (default 200) |
+| `sms.threads` | phone → Mac | `{threads: [Thread]}`, newest first |
+| `sms.messages.request` | Mac → phone | `{thread, limit, before?}`: newest `limit` messages of `thread`, optionally older than `before` (Unix ms) |
+| `sms.messages` | phone → Mac | `{thread, messages: [Message]}`, oldest first |
+| `sms.updated` | phone → Mac | `{messages: [Message]}`: new messages, or ones whose status changed (e.g. sending → sent) |
+| `sms.send` | Mac → phone | `{to, body, client_id}`: `to` is a phone number; `client_id` is chosen by the Mac |
+| `sms.send.result` | phone → Mac | `{client_id, ok, error?}`: sent from the SIM (or failed). The message itself also arrives in `sms.updated`. |
+| `sms.changed` | phone → Mac | `{}`: SMS just became readable (access granted); request threads again |
+
+Thread: `{id, addresses: [string], name?, snippet, time, unread, count}`; `id` is Android's thread ID, `unread` is a bool.
+
+Message: `{id, thread, address, body, time, direction, status}`:
+
+| Field | Values |
+|---|---|
+| `direction` | `in` or `out` |
+| `status` | `received`, `sending`, `sent`, `delivered` or `failed` |
+
 ### Later milestones
 
 Notifications, SMS, calls, files and the other message types are listed in PLAN.md §4. Each gets its body format here as its milestone is built.

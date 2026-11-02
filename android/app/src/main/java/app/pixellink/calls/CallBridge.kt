@@ -7,8 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
@@ -16,12 +14,11 @@ import android.provider.CallLog
 import android.provider.ContactsContract
 import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
-import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
+import app.pixellink.contacts.ContactLookup
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.util.UUID
 
 /**
@@ -125,9 +122,9 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
             .put("direction", call.direction)
         call.number?.let { number ->
             body.put("number", number)
-            lookup(number)?.let { (name, photo) ->
-                body.put("name", name)
-                photo?.let { body.put("photo", it) }
+            ContactLookup.find(context, number, withPhoto = true)?.let { match ->
+                body.put("name", match.name)
+                match.photo?.let { body.put("photo", it) }
             }
         }
         reason?.let { body.put("reason", it) }
@@ -191,7 +188,8 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
         val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION)
         runCatching {
             context.contentResolver.query(CallLog.Calls.CONTENT_URI, projection, args, null)?.use { c ->
-                while (c.moveToNext()) {
+                // Not every provider honours QUERY_ARG_LIMIT, so stop reading once we have enough.
+                while (entries.length() < limit && c.moveToNext()) {
                     entries.put(JSONObject()
                         .put("number", c.getString(0).orEmpty())
                         .put("name", c.getString(1)?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
@@ -232,27 +230,6 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
         return JSONObject().put("contacts", contacts)
     }
 
-    /** Contact name and photo (base64 PNG) for a number, if it's in contacts. */
-    private fun lookup(number: String): Pair<String, String?>? {
-        if (context.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null
-        val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
-        val projection = arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME, ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI)
-        return runCatching {
-            context.contentResolver.query(uri, projection, null, null, null)?.use { c ->
-                if (!c.moveToFirst()) return@use null
-                val photo = c.getString(1)?.let { photoUri ->
-                    context.contentResolver.openInputStream(Uri.parse(photoUri))?.use { BitmapFactory.decodeStream(it) }
-                }?.let { bitmap ->
-                    val scaled = Bitmap.createScaledBitmap(bitmap, PHOTO_PX, PHOTO_PX, true)
-                    val out = ByteArrayOutputStream()
-                    scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
-                    Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                }
-                c.getString(0) to photo
-            }
-        }.getOrNull()
-    }
-
     private fun callType(type: Int) = when (type) {
         CallLog.Calls.INCOMING_TYPE -> "incoming"
         CallLog.Calls.OUTGOING_TYPE -> "outgoing"
@@ -265,7 +242,6 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
 
     companion object {
         private const val TAG = "PixelLink"
-        private const val PHOTO_PX = 96
         private const val LOG_DELAY_MS = 1_500L
         private const val DIAL_MATCH_MS = 30_000L
 
