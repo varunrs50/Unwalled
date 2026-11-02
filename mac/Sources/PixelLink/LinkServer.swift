@@ -175,16 +175,18 @@ final class PhoneConnection {
         nw.start(queue: queue)
     }
 
-    func send(_ type: String, _ body: Message = [:], replyTo id: String? = nil) {
+    /// `sent` is called (on the connection's queue) once the frame has been handed to the network,
+    /// so large transfers can wait for it before sending the next chunk.
+    func send(_ type: String, _ body: Message = [:], replyTo id: String? = nil, sent: ((Bool) -> Void)? = nil) {
         let envelope: Message = [
             "v": 1, "id": id ?? UUID().uuidString.lowercased(), "type": type,
             "ts": Int64(Date().timeIntervalSince1970 * 1000), "body": body,
         ]
-        guard let json = try? JSONSerialization.data(withJSONObject: envelope) else { return }
+        guard let json = try? JSONSerialization.data(withJSONObject: envelope) else { sent?(false); return }
         var length = UInt32(json.count).bigEndian
         var frame = Data(bytes: &length, count: 4)
         frame.append(json)
-        nw.send(content: frame, completion: .contentProcessed { _ in })
+        nw.send(content: frame, completion: .contentProcessed { error in sent?(error == nil) })
     }
 
     func close() {

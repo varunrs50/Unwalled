@@ -46,6 +46,7 @@ final class AppModel {
     @ObservationIgnored let relay = NotificationRelay()
     @ObservationIgnored let calls = CallController()
     @ObservationIgnored let messages = MessagesStore()
+    @ObservationIgnored let extras = ExtrasController()
 
     @ObservationIgnored private var server: LinkServer?
     @ObservationIgnored private weak var session: PhoneConnection?
@@ -67,6 +68,7 @@ final class AppModel {
         relay.send = { [weak self] type, body in self?.session?.send(type, body) }
         calls.send = { [weak self] type, body in self?.session?.send(type, body) }
         messages.toPhone = { [weak self] type, body in self?.session?.send(type, body) }
+        extras.connection = { [weak self] in self?.state == .connected ? self?.session : nil }
         relay.onCallBack = { [weak self] number in self?.calls.dial(number) }
         #if DEBUG
         listenForDebugCommands()
@@ -211,6 +213,7 @@ final class AppModel {
         if session === conn || session == nil {
             session = nil
             calls.phoneDisconnected()
+            extras.phoneDisconnected()
             if paired != nil { state = .waiting }
         }
     }
@@ -287,6 +290,16 @@ final class AppModel {
         case "calllog.changed" where isPaired:
             session?.send("calllog.request", ["limit": 200])
 
+        case "phone.ring.state" where isPaired: extras.ringState(body)
+        case "media.state" where isPaired: extras.mediaState(body)
+        case "clip.set" where isPaired: extras.clipFromPhone(body)
+        case "file.offer" where isPaired: extras.offer(body)
+        case "file.chunk" where isPaired: extras.chunk(body)
+        case "file.done" where isPaired: extras.done(body)
+        case "file.cancel" where isPaired: extras.cancel(body)
+        case "file.result" where isPaired: extras.result(body)
+        case "photos.list" where isPaired: extras.photosList(body)
+
         case "sms.threads" where isPaired:
             messages.received(threads: body)
 
@@ -352,6 +365,19 @@ extension AppModel {
                 case "silence": self.calls.silence()
                 default: if command.hasPrefix("dial:") { self.calls.dial(String(command.dropFirst(5))) }
                 }
+            }
+        }
+        // "…extras" with object ring | media:<action> | photos | photo:<index> | send:<path>
+        dnc.addObserver(forName: .init(prefix + "extras"), object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let command = note.object as? String else { return }
+                if command == "ring" { self.extras.toggleRing() }
+                if command == "photos" { self.extras.refreshPhotos() }
+                if command.hasPrefix("media:") { self.extras.media(String(command.dropFirst(6))) }
+                if command.hasPrefix("photo:"), let i = Int(command.dropFirst(6)), i < self.extras.photos.count {
+                    self.extras.download(self.extras.photos[i])
+                }
+                if command.hasPrefix("send:") { self.extras.sendFile(URL(fileURLWithPath: String(command.dropFirst(5)))) }
             }
         }
         // "…smsload" with object "<thread id>": load a conversation, as opening it in Messages does.

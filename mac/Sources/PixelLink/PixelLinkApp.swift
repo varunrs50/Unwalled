@@ -25,6 +25,10 @@ struct PixelLinkApp: App {
         Window("Calls", id: "calls") {
             CallsView().environment(model)
         }
+
+        Window("Photos", id: "photos") {
+            PhotosView().environment(model)
+        }
     }
 
     init() {
@@ -63,11 +67,30 @@ struct MenuContent: View {
 
             Divider()
 
+            if let playing = model.extras.nowPlaying, model.state == .connected {
+                Divider()
+                NowPlayingRow(playing: playing)
+            }
+
+            if !model.extras.transfers.isEmpty {
+                Divider()
+                ForEach(model.extras.transfers.prefix(3)) { TransferRow(transfer: $0) }
+            }
+
+            Divider()
+
             if model.paired == nil {
                 Button("Pair a phone…") { showPairing() }
             } else {
                 Button("Messages…") { open("messages") }
                 Button("Calls…") { open("calls") }
+                Button("Photos…") { open("photos") }
+                Button("Send File to Phone…") { model.extras.chooseFilesToSend() }
+                    .disabled(model.state != .connected)
+                Button(model.extras.ringing ? "Stop Ringing Phone" : "Find My Phone") { model.extras.toggleRing() }
+                    .disabled(model.state != .connected)
+                Toggle("Share clipboard with phone", isOn: Bindable(model.extras).clipboardSync)
+                    .toggleStyle(.checkbox)
             }
 
             Divider()
@@ -81,6 +104,12 @@ struct MenuContent: View {
         .buttonStyle(.borderless)
         .padding(14)
         .frame(width: 280)
+        // Drop files anywhere on the panel to send them to the phone.
+        .dropDestination(for: URL.self) { urls, _ in
+            guard model.state == .connected else { return false }
+            urls.filter(\.isFileURL).forEach(model.extras.sendFile)
+            return true
+        }
     }
 
     @ViewBuilder private var header: some View {

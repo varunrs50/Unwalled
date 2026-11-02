@@ -1,6 +1,7 @@
 package app.pixellink
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -53,6 +54,9 @@ import app.pixellink.link.PairPayload
 import app.pixellink.link.PairingStore
 import app.pixellink.notifications.NotificationBridge
 import app.pixellink.notifications.TestNotifications
+import app.pixellink.extras.PhotosBridge
+import app.pixellink.extras.requestClipTile
+import app.pixellink.extras.ClipWatcher
 import app.pixellink.sms.SmsBridge
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -235,6 +239,9 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
     val callsAllowed = remember(resumeTick) {
         CallBridge.PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     }
+    val photosAllowed = remember(resumeTick) {
+        PhotosBridge.PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    }
     val smsAllowed = remember(resumeTick) {
         SmsBridge.PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     }
@@ -278,6 +285,15 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
         }
     }
 
+    if (!photosAllowed) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Browse this phone's recent photos on the Mac and download them there.")
+                Button(onClick = { onRequestPermissionsFor(PhotosBridge.PERMISSIONS) }) { Text("Allow photos") }
+            }
+        }
+    }
+
     if (!ignoringBattery) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -287,6 +303,34 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
                         Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
                     )
                 }) { Text("Allow") }
+            }
+        }
+    }
+
+    val autoClip = remember(resumeTick) { ClipWatcher.canRun(context) }
+    if (!autoClip) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Send what you copy on this phone to the Mac automatically.")
+                if (!ClipWatcher.hasLogAccess(context)) {
+                    Text("Needs a one-time setup from the Mac over adb: pm grant ${context.packageName} android.permission.READ_LOGS",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (!ClipWatcher.hasOverlay(context)) {
+                    Button(onClick = {
+                        context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                    }) { Text("Allow display over other apps") }
+                }
+            }
+        }
+    }
+
+    val clipTileAdded = remember(resumeTick) { context.getSharedPreferences("ui", Context.MODE_PRIVATE).getBoolean("clipTile", false) }
+    if (!clipTileAdded) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Send what you've copied on this phone to the Mac with one tap from Quick Settings. You can also use \"Copy to Mac\" on PixelLink's notification.")
+                Button(onClick = { (context as? android.app.Activity)?.let(::requestClipTile) }) { Text("Add Copy to Mac tile") }
             }
         }
     }

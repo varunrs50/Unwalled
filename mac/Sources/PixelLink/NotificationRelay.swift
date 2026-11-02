@@ -156,9 +156,15 @@ final class NotificationRelay: NSObject, UNUserNotificationCenterDelegate {
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let key = response.notification.request.content.userInfo["key"] as? String
         let callBack = response.notification.request.content.userInfo["callback"] as? String
+        let reveal = response.notification.request.content.userInfo["reveal"] as? String
         let actionID = response.actionIdentifier
         let text = (response as? UNTextInputNotificationResponse)?.userText
         Task { @MainActor in
+            if let reveal, actionID == UNNotificationDefaultActionIdentifier {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: reveal)])
+                completionHandler()
+                return
+            }
             defer { completionHandler() }
             if let callBack, actionID == "callback" || actionID == UNNotificationDefaultActionIdentifier {
                 self.onCallBack?(callBack)

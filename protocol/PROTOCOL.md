@@ -173,6 +173,53 @@ Message: `{id, thread, address, body, time, direction, status}`:
 | `direction` | `in` or `out` |
 | `status` | `received`, `sending`, `sent`, `delivered` or `failed` |
 
+### Find my phone (M5)
+
+| Type | Direction | Body |
+|---|---|---|
+| `phone.ring` | Mac → phone | `{}`: ring loudly on the alarm stream (ignores silent mode) for up to 60 s |
+| `phone.ring.stop` | Mac → phone | `{}`: stop ringing (the phone's own notification can stop it too) |
+| `phone.ring.state` | phone → Mac | `{ringing}` |
+
+### Media (M5)
+
+| Type | Direction | Body |
+|---|---|---|
+| `media.state` | phone → Mac | `{active, app?, title?, artist?, album?, playing?, art?}`: what's playing now; `active: false` when nothing is. `art` is a base64 JPEG ≤160 px, sent when it changes. |
+| `media.control` | Mac → phone | `{action}`: `play`, `pause`, `toggle`, `next` or `previous` |
+
+The phone sends `media.state` at session start and whenever the playing app, track or play/pause state changes.
+
+### Clipboard (M5)
+
+| Type | Direction | Body |
+|---|---|---|
+| `clip.set` | both | `{text}`: put this text on the clipboard |
+
+Mac → phone happens automatically when the Mac's clipboard text changes. Phone → Mac happens when you tap PixelLink's Quick Settings tile or share text to "Send to Mac", because Android doesn't let background apps read the clipboard. Each side ignores a `clip.set` that matches what it just sent, so the two never loop.
+
+### Files (M5)
+
+Either side can send a file. Contents travel as base64 in JSON chunks of 192 KiB (256 KiB once encoded).
+
+| Type | Direction | Body |
+|---|---|---|
+| `file.offer` | sender → receiver | `{id, name, size, mime}` |
+| `file.chunk` | sender → receiver | `{id, seq, data}`: `seq` counts from 0; `data` is base64 |
+| `file.done` | sender → receiver | `{id, sha256}`: SHA-256 hex of the whole file |
+| `file.result` | receiver → sender | `{id, ok, error?}` |
+| `file.cancel` | either | `{id}` |
+
+The sender sends chunks one after another as fast as the connection accepts them. The receiver writes them to a temporary file, checks the size and SHA-256, then moves the file into place: `~/Downloads` on the Mac (renamed if the name is taken), `Downloads/PixelLink` on the phone.
+
+### Photos (M5)
+
+| Type | Direction | Body |
+|---|---|---|
+| `photos.request` | Mac → phone | `{limit, offset, album}`: limit defaults to 60, offset to 0; `album` is a folder name, `""` for all |
+| `photos.list` | phone → Mac | `{photos: [{id, name, time, width, height, size, thumb}], offset, total, album, albums: [{name, count}]}`, newest first. `thumb` is a base64 JPEG ≤240 px; `total` counts the photos in `album`; `albums` lists every folder, largest first. |
+| `photos.get` | Mac → phone | `{id}`: the phone sends the full image as a file transfer (`file.offer` …) whose `id` is `photo-<id>` |
+
 ### Later milestones
 
 Notifications, SMS, calls, files and the other message types are listed in PLAN.md §4. Each gets its body format here as its milestone is built.

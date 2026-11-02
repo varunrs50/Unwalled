@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 17: needed to reach the Mac at a private address and to use Bonjour. -->
@@ -22,8 +23,13 @@
     <!-- Messages: read SMS threads and send texts from the SIM. -->
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Photos window on the Mac. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <!-- App names and icons for forwarded notifications. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Automatic clipboard: READ_LOGS is granted over adb; overlay lets us open the reader from the background. -->
+    <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:label="@string/app_name"
@@ -58,6 +64,45 @@
         <receiver
             android:name=".notifications.TestNotifications$TestReplyReceiver"
             android:exported="false" />
+
+        <activity
+            android:name=".extras.ShareActivity"
+            android:exported="true"
+            android:label="Send to Mac"
+            android:icon="@drawable/ic_launcher"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".extras.ClipSendActivity"
+            android:taskAffinity=""
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
+
+        <service
+            android:name=".extras.ClipTileService"
+            android:exported="true"
+            android:label="Copy to Mac"
+            android:icon="@drawable/ic_stat_link"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name=".BootReceiver"

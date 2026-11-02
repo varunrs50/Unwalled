@@ -24,6 +24,11 @@ import app.pixellink.MainActivity
 import app.pixellink.R
 import app.pixellink.calls.CallBridge
 import app.pixellink.notifications.NotificationBridge
+import app.pixellink.extras.ClipboardBridge
+import app.pixellink.extras.FileTransfer
+import app.pixellink.extras.MediaBridge
+import app.pixellink.extras.PhoneRinger
+import app.pixellink.extras.PhotosBridge
 import app.pixellink.sms.SmsBridge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +43,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.net.DatagramPacket
@@ -61,6 +68,13 @@ class LinkService : Service() {
     private var batteryReceiver: BroadcastReceiver? = null
     private lateinit var calls: CallBridge
     private lateinit var sms: SmsBridge
+    private lateinit var ringer: PhoneRinger
+    private lateinit var media: MediaBridge
+    private lateinit var files: FileTransfer
+    private lateinit var photos: PhotosBridge
+    private lateinit var clipWatcher: app.pixellink.extras.ClipWatcher
+    /** One outgoing file at a time, so chunks of different files never interleave. */
+    private val sendLock = Mutex()
     @Volatile private var nudgeSocket: DatagramSocket? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -70,6 +84,11 @@ class LinkService : Service() {
         store = PairingStore(this)
         calls = CallBridge(this, LinkBus::send)
         sms = SmsBridge(this, LinkBus::send)
+        ringer = PhoneRinger(this, LinkBus::send)
+        media = MediaBridge(this, LinkBus::send)
+        files = FileTransfer(this)
+        photos = PhotosBridge(this)
+        clipWatcher = app.pixellink.extras.ClipWatcher(this)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Connection to Mac", NotificationManager.IMPORTANCE_MIN)
         )
@@ -94,6 +113,12 @@ class LinkService : Service() {
                 runCatching { frames?.send("unpair") }
                 forget()
             }
+            PhoneRinger.ACTION_STOP -> ringer.stop()
+            ACTION_SEND_FILES -> {
+                val clip = intent.clipData
+                val uris = (0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri }
+                uris.forEach { uri -> sendFile(uri, "file-${java.util.UUID.randomUUID()}") }
+            }
             else -> if (loop?.isActive != true) {
                 if (store.mac == null) forget() else restart { runLoop() }
             }
@@ -106,6 +131,9 @@ class LinkService : Service() {
         nudgeSocket?.close()
         calls.stop()
         sms.stop()
+        ringer.stop()
+        media.stop()
+        clipWatcher.stop()
         frames?.close()
         networkCallback?.let { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) }
         batteryReceiver?.let { unregisterReceiver(it) }
@@ -238,6 +266,7 @@ class LinkService : Service() {
             NotificationBridge.instance?.sendSnapshot()
             startCalls()
             calls.resend()
+            media.resend()
 
             while (true) {
                 val frame = fs.receive()
@@ -272,6 +301,17 @@ class LinkService : Service() {
                     "sms.send" -> sms.sendSms(
                         frame.body.getString("to"), frame.body.getString("body"), frame.body.getString("client_id"),
                     )?.let { fs.send("sms.send.result", it, frame.id) }
+                    "phone.ring" -> ringer.start()
+                    "phone.ring.stop" -> ringer.stop()
+                    "media.control" -> media.control(frame.body.getString("action"))
+                    "clip.set" -> ClipboardBridge.setFromMac(this@LinkService, frame.body.getString("text"))
+                    "file.offer" -> files.offer(frame.body)
+                    "file.chunk" -> files.chunk(frame.body)?.let { fs.send("file.result", it) }
+                    "file.done" -> fs.send("file.result", files.done(frame.body))
+                    "file.cancel" -> files.cancel(frame.body.getString("id"))
+                    "file.result" -> Log.i(TAG, "Mac ${if (frame.body.optBoolean("ok")) "saved" else "rejected"} file ${frame.body.optString("error")}")
+                    "photos.request" -> fs.send("photos.list", photos.page(frame.body.optInt("limit", 60), frame.body.optInt("offset", 0), frame.body.optString("album", "")), frame.id)
+                    "photos.get" -> frame.body.getLong("id").let { id -> sendFile(photos.uri(id), "photo-$id") }
                     else -> Unit
                 }
             }
@@ -289,6 +329,25 @@ class LinkService : Service() {
             LinkBus.send("contacts.changed", JSONObject())
         }
         if (sms.start()) LinkBus.send("sms.changed", JSONObject())
+        media.start()
+        clipWatcher.start()
+    }
+
+    /** Sends a file to the Mac in the background, one at a time. */
+    private fun sendFile(uri: android.net.Uri, id: String) {
+        scope.launch {
+            sendLock.withLock {
+                val fs = frames
+                if (fs == null) {
+                    Log.w(TAG, "Not connected; can't send file")
+                    return@withLock
+                }
+                runCatching { files.send(fs, uri, id) }.onFailure {
+                    Log.w(TAG, "File send failed: ${it.message}")
+                    runCatching { fs.send("file.cancel", JSONObject().put("id", id)) }
+                }
+            }
+        }
     }
 
     private fun sendStatus() {
@@ -370,6 +429,7 @@ class LinkService : Service() {
             .setContentTitle("PixelLink")
             .setContentText(text)
             .setContentIntent(open)
+            .addAction(Notification.Action.Builder(null, "Copy to Mac", app.pixellink.extras.clipSendIntent(this)).build())
             .setOngoing(true)
             .build()
     }
@@ -411,6 +471,19 @@ class LinkService : Service() {
 
         fun unpair(context: Context) {
             context.startForegroundService(Intent(context, LinkService::class.java).setAction(ACTION_UNPAIR))
+        }
+
+        private const val ACTION_SEND_FILES = "app.pixellink.action.SEND_FILES"
+
+        /** Sends shared files to the Mac; the read grant on the URIs is passed on to the service. */
+        fun sendFiles(context: Context, uris: List<android.net.Uri>) {
+            if (uris.isEmpty()) return
+            val clip = android.content.ClipData.newRawUri("files", uris.first())
+            uris.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it)) }
+            val intent = Intent(context, LinkService::class.java).setAction(ACTION_SEND_FILES)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.clipData = clip
+            context.startForegroundService(intent)
         }
     }
 }
