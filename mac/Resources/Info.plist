@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>app.pixellink.mac</string>
+    <key>CFBundleName</key>
+    <string>PixelLink</string>
+    <key>CFBundleDisplayName</key>
+    <string>PixelLink</string>
+    <key>CFBundleExecutable</key>
+    <string>PixelLink</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>PixelLink connects to your paired phone on this Wi-Fi network.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_pixellink._tcp</string>
+        <string>_adb-tls-connect._tcp</string>
+    </array>
+</dict>
+</plist>

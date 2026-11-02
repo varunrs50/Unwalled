@@ -1,0 +1,12 @@
+.DS_Store
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/
+# Mac
+mac/.build/
+mac/build/
+*.xcuserstate
+xcuserdata/
