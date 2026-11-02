@@ -29,12 +29,20 @@ final class NotificationRelay: NSObject, UNUserNotificationCenterDelegate {
     private var categories: [String: UNNotificationCategory] = [:]
     private let iconDir = AppPaths.support.appendingPathComponent("icons", isDirectory: true)
 
+    static let missedCallCategory = "pl.missedcall"
+
     /// Sends a frame to the phone; set by AppModel.
     var send: ((String, Message) -> Void)?
+    /// "Call back" on a missed-call notification; set by AppModel.
+    var onCallBack: ((String) -> Void)?
 
     func start() {
         try? FileManager.default.createDirectory(at: iconDir, withIntermediateDirectories: true)
         center.delegate = self
+        let callBack = UNNotificationAction(identifier: "callback", title: "Call Back", options: [])
+        categories[Self.missedCallCategory] = UNNotificationCategory(identifier: Self.missedCallCategory, actions: [callBack],
+                                                                     intentIdentifiers: [], options: [])
+        center.setNotificationCategories(Set(categories.values))
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             Log.info("Notification permission: \(granted ? "granted" : "not granted") \(error.map { "\($0)" } ?? "")")
         }
@@ -147,10 +155,15 @@ final class NotificationRelay: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let key = response.notification.request.content.userInfo["key"] as? String
+        let callBack = response.notification.request.content.userInfo["callback"] as? String
         let actionID = response.actionIdentifier
         let text = (response as? UNTextInputNotificationResponse)?.userText
         Task { @MainActor in
             defer { completionHandler() }
+            if let callBack, actionID == "callback" || actionID == UNNotificationDefaultActionIdentifier {
+                self.onCallBack?(callBack)
+                return
+            }
             guard let key else { return }
             if actionID == UNNotificationDismissActionIdentifier {
                 self.send?("notif.dismiss", ["key": key])

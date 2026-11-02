@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct PixelLinkApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var model = AppModel()
 
     var body: some Scene {
@@ -22,14 +23,15 @@ struct PixelLinkApp: App {
         }
 
         Window("Calls", id: "calls") {
-            PlaceholderView(title: "Calls", detail: "Call log and contacts arrive in milestone M3.")
+            CallsView().environment(model)
         }
     }
 
     init() {
+        let model = _model.wrappedValue
+        AppDelegate.openTel = { number in model.calls.dial(number) }
         #if DEBUG
         if CommandLine.arguments.contains("--pair") {
-            let model = _model.wrappedValue
             DispatchQueue.main.async { model.startPairing() }
         }
         #endif
@@ -195,6 +197,18 @@ struct NotificationRow: View {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
             }
             .help("Clear on phone")
+        }
+    }
+}
+
+/// Handles tel: links (from Safari, Contacts, Mail…) by dialling them on the phone.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    @MainActor static var openTel: ((String) -> Void)?
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "tel" {
+            let number = url.absoluteString.dropFirst("tel:".count).removingPercentEncoding ?? ""
+            MainActor.assumeIsolated { Self.openTel?(number) }
         }
     }
 }

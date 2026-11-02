@@ -7,6 +7,8 @@ struct PairedPhone: Codable {
     var model: String
     var fingerprint: String
     var pairedAt: Date
+    /// Where the phone last connected from; wake-up nudges go here.
+    var lastHost: String?
 }
 
 struct PhoneStatus {
@@ -42,6 +44,7 @@ final class AppModel {
     private(set) var notifications: [PhoneNotification] = []
 
     @ObservationIgnored let relay = NotificationRelay()
+    @ObservationIgnored let calls = CallController()
 
     @ObservationIgnored private var server: LinkServer?
     @ObservationIgnored private weak var session: PhoneConnection?
@@ -61,6 +64,8 @@ final class AppModel {
         paired = loadPaired()
         relay.start()
         relay.send = { [weak self] type, body in self?.session?.send(type, body) }
+        calls.send = { [weak self] type, body in self?.session?.send(type, body) }
+        relay.onCallBack = { [weak self] number in self?.calls.dial(number) }
         #if DEBUG
         listenForDebugCommands()
         #endif
@@ -79,7 +84,28 @@ final class AppModel {
             startupError = "Couldn't start: \(error)"
             Log.info(startupError!)
         }
+        startNudging()
     }
+
+    /// A sleeping phone can miss that this Mac restarted or slept; nudge it to reconnect
+    /// at launch, on wake, and every 20 s while it's away. See PROTOCOL.md, "Wake-up nudge".
+    private func startNudging() {
+        nudgePhone()
+        nudgeTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { if self?.state == .waiting { self?.nudgePhone() } }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
+                                                          queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.nudgePhone() }
+        }
+    }
+
+    private func nudgePhone() {
+        guard let host = paired?.lastHost else { return }
+        server?.nudge(host)
+    }
+
+    @ObservationIgnored private var nudgeTimer: Timer?
 
     @ObservationIgnored private var identity: Identity?
 
@@ -134,7 +160,7 @@ final class AppModel {
             return
         }
         let phone = PairedPhone(name: request.name, model: request.model,
-                                fingerprint: request.fingerprint, pairedAt: Date())
+                                fingerprint: request.fingerprint, pairedAt: Date(), lastHost: conn.remoteHost)
         savePaired(phone)
         server?.setPinned(phone.fingerprint)
         conn.send("pair.result", ["ok": true, "name": macName], replyTo: request.id)
@@ -182,6 +208,7 @@ final class AppModel {
         }
         if session === conn || session == nil {
             session = nil
+            calls.phoneDisconnected()
             if paired != nil { state = .waiting }
         }
     }
@@ -213,11 +240,14 @@ final class AppModel {
             session = conn
             notifications = []
             state = .connected
-            if let name = body["name"] as? String, name != paired?.name {
-                paired?.name = name
+            let name = body["name"] as? String ?? paired?.name
+            if name != paired?.name || conn.remoteHost != paired?.lastHost {
+                paired?.name = name ?? "Phone"
+                paired?.lastHost = conn.remoteHost ?? paired?.lastHost
                 if let paired { savePaired(paired) }
             }
             conn.send("hello.ack", ["name": macName], replyTo: id)
+            calls.refresh()
             Log.info("Hello from \(paired?.name ?? "phone")")
 
         case "status.update" where isPaired:
@@ -241,6 +271,24 @@ final class AppModel {
             notifications.removeAll { $0.id == key }
             relay.removed(key)
             Log.info("notif.removed \(key.prefix(24))…")
+
+        case "call.state" where isPaired:
+            calls.update(body)
+
+        case "call.result" where isPaired:
+            calls.result(body)
+
+        case "calllog.page" where isPaired:
+            calls.received(log: body)
+
+        case "calllog.changed" where isPaired:
+            session?.send("calllog.request", ["limit": 200])
+
+        case "contacts.changed" where isPaired:
+            session?.send("contacts.request", [:])
+
+        case "contacts.list" where isPaired:
+            calls.received(contacts: body)
 
         case "unpair" where isPaired:
             conn.close()
@@ -272,18 +320,30 @@ final class AppModel {
 #if DEBUG
 extension AppModel {
     /// Lets tests drive the Mac side without clicking notifications:
-    /// post distributed notification "app.pixellink.debug.reply" with object = reply text,
-    /// or "app.pixellink.debug.dismiss" to dismiss the newest notification.
+    /// post distributed notification "app.pixellink.debug.<port>.reply" with object = reply text,
+    /// "…dismiss" to dismiss the newest notification, or "…call" with object answer / end / silence / dial:<number>.
     fileprivate func listenForDebugCommands() {
         let dnc = DistributedNotificationCenter.default()
-        dnc.addObserver(forName: .init("app.pixellink.debug.reply"), object: nil, queue: .main) { [weak self] note in
+        let prefix = "app.pixellink.debug.\(LinkServer.port.rawValue)."
+        dnc.addObserver(forName: .init(prefix + "call"), object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let command = note.object as? String else { return }
+                switch command {
+                case "answer": self.calls.answer()
+                case "end": self.calls.end()
+                case "silence": self.calls.silence()
+                default: if command.hasPrefix("dial:") { self.calls.dial(String(command.dropFirst(5))) }
+                }
+            }
+        }
+        dnc.addObserver(forName: .init(prefix + "reply"), object: nil, queue: .main) { [weak self] note in
             MainActor.assumeIsolated {
                 guard let self, let n = self.notifications.first(where: { $0.replyAction != nil }),
                       let action = n.replyAction else { return }
                 self.relay.reply(to: n.id, action: action.index, text: note.object as? String ?? "test reply")
             }
         }
-        dnc.addObserver(forName: .init("app.pixellink.debug.dismiss"), object: nil, queue: .main) { [weak self] _ in
+        dnc.addObserver(forName: .init(prefix + "dismiss"), object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let n = self.notifications.first else { return }
                 self.dismissNotification(n)

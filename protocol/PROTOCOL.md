@@ -10,6 +10,16 @@ How the phone app and the Mac app talk to each other. Both apps must follow this
   - Phone: key in the Android Keystore under alias `pixellink-identity`. Android generates the self-signed certificate.
 - **Discovery.** The Mac advertises Bonjour service `_pixellink._tcp` with TXT record `fp=<first 16 hex chars of its fingerprint>`. The phone first tries the last known host, then searches Bonjour for a service whose `fp` matches its pinned Mac.
 
+## Wake-up nudge
+
+A sleeping phone (Android Doze) pauses its timers, so it may not notice that the Mac restarted or slept. To get it back quickly, the Mac sends a UDP datagram to the phone's last known address, **port 47822**:
+
+```
+PLNUDGE1 <first 16 hex chars of the Mac's fingerprint>
+```
+
+The Mac sends one when it starts, when it wakes from sleep, and every 20 s while the paired phone isn't connected. On a nudge whose fingerprint prefix matches its paired Mac, the phone drops its current connection, if it has one, and reconnects immediately. The nudge carries no secrets and grants nothing: the reconnect still goes through the full TLS pinning.
+
 ## Framing
 
 Each frame is a 4-byte big-endian unsigned length followed by that many bytes of UTF-8 JSON. The maximum frame size is 16 MiB; larger frames close the connection.
@@ -105,6 +115,39 @@ The phone sends `status.update` right after `hello.ack`, whenever battery or cha
 Which notifications are forwarded: ones the user can swipe away, that make an alert (importance "default" or higher), and that aren't group summaries. Ongoing ones (music, navigation, PixelLink's own) are skipped.
 
 On every new session the phone re-sends what's currently showing with `initial: true`, so the Mac's list matches the phone.
+
+### Calls (M3)
+
+Call audio always stays on the phone. These messages only show and control calls.
+
+| Type | Direction | Body |
+|---|---|---|
+| `call.state` | phone → Mac | `{id, state, direction, number?, name?, photo?, reason?}` (see below) |
+| `call.answer` | Mac → phone | `{}`: answer the ringing call |
+| `call.end` | Mac → phone | `{}`: decline the ringing call, or hang up the active one |
+| `call.silence` | Mac → phone | `{}`: stop the ringer without declining |
+| `call.dial` | Mac → phone | `{number}`: place a call from the phone |
+| `call.result` | phone → Mac | `{ok, action, error?}`: reply to any of the four above |
+| `calllog.request` | Mac → phone | `{limit}` (default 100) |
+| `calllog.page` | phone → Mac | `{entries: [{number, name?, type, time, duration}]}`, newest first. `type` is `incoming`, `outgoing`, `missed`, `rejected`, `blocked` or `voicemail`; `duration` in seconds. |
+| `calllog.changed` | phone → Mac | `{}`: a call finished; request the log again |
+| `contacts.request` | Mac → phone | `{}` |
+| `contacts.list` | phone → Mac | `{contacts: [{name, numbers: [{number, label}]}]}`, sorted by name; only contacts with phone numbers |
+| `contacts.changed` | phone → Mac | `{}`: contacts became available (e.g. access was just granted); request them again |
+
+`call.state` fields:
+
+| Field | Meaning |
+|---|---|
+| `id` | Phone-generated ID, the same for every update of one call |
+| `state` | `ringing` (incoming, not answered yet), `active` (answered or dialling out), `ended` |
+| `direction` | `incoming` or `outgoing` |
+| `number` | Caller or callee number, when Android reveals it |
+| `name` | Contact name, if the number is in contacts |
+| `photo` | Base64 PNG of the contact photo, ≤96 px, if any |
+| `reason` | Only with `ended`: `missed` (rang out), `declined` (rejected from phone or Mac), `completed` (answered then hung up) |
+
+A ringing call can be reported twice: Android first reports the ring without the number, then again with it. The Mac updates the same `id` in place.
 
 ### Later milestones
 

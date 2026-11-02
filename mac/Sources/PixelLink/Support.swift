@@ -3,9 +3,15 @@ import Foundation
 
 enum AppPaths {
     /// ~/Library/Application Support/PixelLink, created on first use.
+    /// Debug builds can point a second test copy elsewhere with PIXELLINK_DATA_DIR.
     static let support: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("PixelLink", isDirectory: true)
+        var dir = base.appendingPathComponent("PixelLink", isDirectory: true)
+        #if DEBUG
+        if let custom = ProcessInfo.processInfo.environment["PIXELLINK_DATA_DIR"] {
+            dir = URL(fileURLWithPath: custom, isDirectory: true)
+        }
+        #endif
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
         return dir

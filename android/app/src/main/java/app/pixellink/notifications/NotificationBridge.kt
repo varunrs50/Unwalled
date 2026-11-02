@@ -93,6 +93,10 @@ class NotificationBridge : NotificationListenerService() {
         if (sbn.packageName == packageName && n.channelId != TestNotifications.CHANNEL) return false
         if (!sbn.isClearable) return false
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return false
+        // With call access on, the call bridge reports calls and missed calls itself.
+        if ((n.category == Notification.CATEGORY_CALL || n.category == Notification.CATEGORY_MISSED_CALL) &&
+            checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return false
         val ranking = Ranking()
         if (rankingMap?.getRanking(sbn.key, ranking) == true && ranking.importance < NotificationManager.IMPORTANCE_DEFAULT) {
             return false

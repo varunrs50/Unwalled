@@ -7,7 +7,15 @@ typealias Message = [String: Any]
 /// Listens for the phone on port 47820 with mutual TLS 1.3 and length-prefixed JSON frames.
 /// All state lives on `queue`; callbacks are delivered on the main queue.
 final class LinkServer {
-    static let port: NWEndpoint.Port = 47820
+    /// 47820; debug builds can run a second test copy on another port with PIXELLINK_PORT.
+    static let port: NWEndpoint.Port = {
+        #if DEBUG
+        if let custom = ProcessInfo.processInfo.environment["PIXELLINK_PORT"].flatMap(UInt16.init) {
+            return NWEndpoint.Port(rawValue: custom)!
+        }
+        #endif
+        return 47820
+    }()
     static let serviceType = "_pixellink._tcp"
 
     private let queue = DispatchQueue(label: "app.pixellink.server")
@@ -57,7 +65,8 @@ final class LinkServer {
 
         let listener = try NWListener(using: params, on: Self.port)
         let txt = NWTXTRecord(["fp": String(identity.fingerprint.prefix(16))])
-        listener.service = NWListener.Service(name: Host.current().localizedName ?? "Mac",
+        let name = (Host.current().localizedName ?? "Mac") + (Self.port == 47820 ? "" : " (test \(Self.port))")
+        listener.service = NWListener.Service(name: name,
                                               type: Self.serviceType, domain: nil, txtRecord: txt)
         listener.stateUpdateHandler = { state in Log.info("Listener: \(state)") }
         listener.newConnectionHandler = { [weak self] nw in self?.accept(nw) }
@@ -87,6 +96,26 @@ final class LinkServer {
         conn.start()
     }
 
+    static let nudgePort: NWEndpoint.Port = 47822
+
+    /// Sends a wake-up nudge (one UDP datagram) to the phone at `host`.
+    func nudge(_ host: String) {
+        let message = Data("PLNUDGE1 \(identity.fingerprint.prefix(16))".utf8)
+        let udp = NWConnection(host: NWEndpoint.Host(host), port: Self.nudgePort, using: .udp)
+        udp.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                udp.send(content: message, completion: .contentProcessed { _ in udp.cancel() })
+            case .failed, .waiting:
+                udp.cancel()
+            default:
+                break
+            }
+        }
+        udp.start(queue: queue)
+        Log.info("Nudged phone at \(host)")
+    }
+
     static func leafFingerprint(_ trust: SecTrust) -> String? {
         guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let leaf = chain.first
         else { return nil }
@@ -106,6 +135,14 @@ final class PhoneConnection {
 
     /// SHA-256 of the phone's certificate, known once TLS is ready.
     private(set) var fingerprint: String?
+
+    /// The phone's IP address, e.g. "192.168.1.7".
+    var remoteHost: String? {
+        guard case .hostPort(let host, _) = nw.endpoint else { return nil }
+        var text = "\(host)"
+        if let percent = text.firstIndex(of: "%") { text = String(text[..<percent]) }
+        return text.hasPrefix("::ffff:") ? String(text.dropFirst(7)) : text
+    }
 
     var onReady: ((PhoneConnection) -> Void)?
     var onMessage: ((PhoneConnection, String, Message, String) -> Void)?

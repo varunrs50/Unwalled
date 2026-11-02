@@ -22,6 +22,7 @@ import android.util.Log
 import app.pixellink.BuildConfig
 import app.pixellink.MainActivity
 import app.pixellink.R
+import app.pixellink.calls.CallBridge
 import app.pixellink.notifications.NotificationBridge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +39,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.Socket
 import javax.net.ssl.SSLSocket
@@ -55,21 +58,26 @@ class LinkService : Service() {
     @Volatile private var frames: FrameSocket? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var batteryReceiver: BroadcastReceiver? = null
+    private lateinit var calls: CallBridge
+    @Volatile private var nudgeSocket: DatagramSocket? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         store = PairingStore(this)
+        calls = CallBridge(this, LinkBus::send)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Connection to Mac", NotificationManager.IMPORTANCE_MIN)
         )
         startForeground(NOTIFICATION_ID, notification("Starting…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         watchWifi()
         watchBattery()
+        listenForNudges()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startCalls()
         when (intent?.action) {
             ACTION_PAIR -> {
                 val payload = PairPayload.parse(intent.getStringExtra(EXTRA_PAYLOAD).orEmpty())
@@ -92,6 +100,8 @@ class LinkService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
+        nudgeSocket?.close()
+        calls.stop()
         frames?.close()
         networkCallback?.let { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) }
         batteryReceiver?.let { unregisterReceiver(it) }
@@ -222,6 +232,8 @@ class LinkService : Service() {
             launch { for ((type, body) in outbox) fs.send(type, body) }
             LinkBus.sender = { type, body -> outbox.trySend(type to body) }
             NotificationBridge.instance?.sendSnapshot()
+            startCalls()
+            calls.resend()
 
             while (true) {
                 val frame = fs.receive()
@@ -238,6 +250,12 @@ class LinkService : Service() {
                         if (!ok) Log.w(TAG, "Couldn't send reply")
                     }
                     "notif.action" -> NotificationBridge.instance?.perform(frame.body.getString("key"), frame.body.getInt("action"))
+                    "call.answer" -> fs.send("call.result", calls.answer(), frame.id)
+                    "call.end" -> fs.send("call.result", calls.end(), frame.id)
+                    "call.silence" -> fs.send("call.result", calls.silence(), frame.id)
+                    "call.dial" -> fs.send("call.result", calls.dial(frame.body.getString("number")), frame.id)
+                    "calllog.request" -> fs.send("calllog.page", calls.callLog(frame.body.optInt("limit", 100)), frame.id)
+                    "contacts.request" -> fs.send("contacts.list", calls.contacts(), frame.id)
                     else -> Unit
                 }
             }
@@ -245,6 +263,14 @@ class LinkService : Service() {
             LinkBus.sender = null
             frames = null
             coroutineContext.cancelChildren()
+        }
+    }
+
+    /** Call access can be granted at any time; when it is, tell the Mac to fetch the call log and contacts. */
+    private fun startCalls() {
+        if (calls.start()) {
+            LinkBus.send("calllog.changed", JSONObject())
+            LinkBus.send("contacts.changed", JSONObject())
         }
     }
 
@@ -261,6 +287,38 @@ class LinkService : Service() {
     }
 
     // MARK: System events
+
+    /**
+     * In deep sleep our timers stop, so we can miss that the Mac restarted or slept. The Mac
+     * sends a UDP nudge when it comes back; an incoming packet wakes the phone, and we drop
+     * whatever connection we think we have and reconnect. See PROTOCOL.md, "Wake-up nudge".
+     */
+    private fun listenForNudges() {
+        scope.launch {
+            val socket = runCatching { DatagramSocket(NUDGE_PORT) }.getOrElse {
+                Log.w(TAG, "Can't listen for nudges: ${it.message}")
+                return@launch
+            }
+            // receive() blocks and ignores cancellation; onDestroy closes this to free the port.
+            nudgeSocket = socket
+            try {
+                val buf = ByteArray(64)
+                while (true) {
+                    val packet = DatagramPacket(buf, buf.size)
+                    socket.receive(packet)
+                    val text = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
+                    val prefix = text.removePrefix("PLNUDGE1 ").takeIf { it != text && it.length == 16 } ?: continue
+                    val mac = store.mac ?: continue
+                    if (!mac.fingerprint.startsWith(prefix)) continue
+                    Log.i(TAG, "Nudged by ${mac.name}, reconnecting")
+                    frames?.close()
+                    wake.trySend(Unit)
+                }
+            } finally {
+                socket.close()
+            }
+        }
+    }
 
     private fun watchWifi() {
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -322,6 +380,7 @@ class LinkService : Service() {
         private const val MIN_BACKOFF_MS = 1_000L
         private const val MAX_BACKOFF_MS = 30_000L
         private const val OUTBOX_SIZE = 256
+        private const val NUDGE_PORT = 47822
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, LinkService::class.java))

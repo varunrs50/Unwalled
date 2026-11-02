@@ -22,6 +22,17 @@
     <true/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>PixelLink connects to your paired phone on this Wi-Fi network.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Phone number</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>tel</string>
+            </array>
+        </dict>
+    </array>
     <key>NSBonjourServices</key>
     <array>
         <string>_pixellink._tcp</string>

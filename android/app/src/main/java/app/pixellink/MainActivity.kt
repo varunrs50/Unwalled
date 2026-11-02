@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import app.pixellink.calls.CallBridge
 import app.pixellink.link.LinkService
 import app.pixellink.link.LinkState
 import app.pixellink.link.LinkStatus
@@ -65,6 +66,8 @@ class MainActivity : ComponentActivity() {
 
     private val permissionRequest = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         resumeTick.intValue++
+        // Lets the service pick up newly granted call access straight away.
+        if (PairingStore(this).mac != null) LinkService.start(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,7 +84,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PixelLinkTheme {
-                HomeScreen(pendingPayload, resumeTick.intValue, onScan = ::scan, onRequestPermissions = ::requestMissingPermissions)
+                HomeScreen(
+                    pendingPayload, resumeTick.intValue, onScan = ::scan,
+                    onRequestPermissions = ::requestMissingPermissions,
+                    onRequestCallPermissions = { permissionRequest.launch(CallBridge.PERMISSIONS.toTypedArray()) },
+                )
             }
         }
     }
@@ -129,7 +136,13 @@ fun PixelLinkTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun HomeScreen(pendingPayload: MutableState<String?>, resumeTick: Int, onScan: () -> Unit, onRequestPermissions: () -> Unit) {
+fun HomeScreen(
+    pendingPayload: MutableState<String?>,
+    resumeTick: Int,
+    onScan: () -> Unit,
+    onRequestPermissions: () -> Unit,
+    onRequestCallPermissions: () -> Unit,
+) {
     val context = LocalContext.current
     val status by LinkState.status.collectAsState()
     val error by LinkState.error.collectAsState()
@@ -181,8 +194,8 @@ fun HomeScreen(pendingPayload: MutableState<String?>, resumeTick: Int, onScan: (
                     Spacer(Modifier.width(16.dp))
                     Text("Click Allow on ${s.macName} to finish pairing.")
                 }
-                is LinkStatus.Searching -> PairedContent(s.macName, connected = false, resumeTick)
-                is LinkStatus.Connected -> PairedContent(s.macName, connected = true, resumeTick)
+                is LinkStatus.Searching -> PairedContent(s.macName, connected = false, resumeTick, onRequestCallPermissions)
+                is LinkStatus.Connected -> PairedContent(s.macName, connected = true, resumeTick, onRequestCallPermissions)
             }
 
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -212,18 +225,22 @@ private fun NotPairedContent(onScan: () -> Unit, onPaste: (String) -> Unit) {
 }
 
 @Composable
-private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int) {
+private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, onRequestCallPermissions: () -> Unit) {
     val context = LocalContext.current
     val ignoringBattery = remember(resumeTick) {
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
     }
     val notificationsEnabled = remember(resumeTick) { NotificationBridge.isEnabled(context) }
+    val callsAllowed = remember(resumeTick) {
+        CallBridge.PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(macName, style = MaterialTheme.typography.titleMedium)
             Text(if (connected) "Connected" else "Looking for your Mac on this Wi-Fi…")
             if (notificationsEnabled) Text("Notifications are shown on your Mac", style = MaterialTheme.typography.bodySmall)
+            if (callsAllowed) Text("Calls are shown on your Mac", style = MaterialTheme.typography.bodySmall)
         }
     }
 
@@ -234,6 +251,15 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int) 
                 Button(onClick = { context.startActivity(NotificationBridge.settingsIntent(context)) }) {
                     Text("Allow notification access")
                 }
+            }
+        }
+    }
+
+    if (!callsAllowed) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("See who's calling on your Mac, answer or decline from there, and call contacts from the Mac. Call audio stays on the phone.")
+                Button(onClick = onRequestCallPermissions) { Text("Allow calls") }
             }
         }
     }
