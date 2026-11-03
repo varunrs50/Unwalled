@@ -35,6 +35,7 @@ Calls, text messages, notifications, files, photos, clipboard and media controls
 - [For developers](#for-developers)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
+- [License](#license)
 - [Acknowledgements](#acknowledgements)
 
 ---
@@ -510,6 +511,10 @@ Bug reports and pull requests are welcome. When reporting a bug, please include:
 - Logs if you can: `adb logcat -s PixelLink` from the phone, and the Mac log (see [For developers](#for-developers))
 
 Pull requests should keep the existing code style and update `protocol/PROTOCOL.md` for any new message type.
+
+## License
+
+PixelLink is released under the [Apache License 2.0](LICENSE). Copyright 2026 Varun Kumar R S.
 
 ## Acknowledgements
 
