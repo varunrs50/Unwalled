@@ -11,7 +11,7 @@ struct PairedPhone: Codable {
     var lastHost: String?
 }
 
-struct PhoneStatus {
+struct PhoneStatus: Equatable {
     var battery: Int?
     var charging = false
     var signal: Int?
@@ -92,12 +92,13 @@ final class AppModel {
     }
 
     /// A sleeping phone can miss that this Mac restarted or slept; nudge it to reconnect
-    /// at launch, on wake, and every 20 s while it's away. See PROTOCOL.md, "Wake-up nudge".
+    /// at launch, on wake, and every minute while it's away. See PROTOCOL.md, "Wake-up nudge".
     private func startNudging() {
         nudgePhone()
-        nudgeTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+        nudgeTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { if self?.state == .waiting { self?.nudgePhone() } }
         }
+        nudgeTimer?.tolerance = 10
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
                                                           queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.nudgePhone() }
@@ -253,17 +254,19 @@ final class AppModel {
             }
             conn.send("hello.ack", ["name": macName], replyTo: id)
             calls.refresh()
+            extras.phoneConnected()
             messages.refresh()
             Log.info("Hello from \(paired?.name ?? "phone")")
 
         case "status.update" where isPaired:
+            let previous = status
             status = PhoneStatus(
                 battery: body["battery"] as? Int,
                 charging: body["charging"] as? Bool ?? false,
                 signal: body["signal"] as? Int,
                 network: body["network"] as? String ?? "none",
                 wifi: body["wifi"] as? Int)
-            Log.info("Status: battery \(status.battery ?? -1)% charging \(status.charging) signal \(status.signal ?? -1) network \(status.network)")
+            if status != previous { Log.info("Status: battery \(status.battery ?? -1)% charging \(status.charging) signal \(status.signal ?? -1) network \(status.network)") }
 
         case "notif.posted" where isPaired:
             guard let notification = relay.posted(body) else { break }

@@ -74,10 +74,15 @@ final class ExtrasController {
 
     static let chunkBytes = 192 * 1024
 
-    init() {
-        clipTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+    /// macOS has no clipboard-changed event, so the clipboard is polled, but only while the
+    /// phone is connected, and with tolerance so the system can batch the wakeups.
+    func phoneConnected() {
+        guard clipTimer == nil else { return }
+        lastChangeCount = NSPasteboard.general.changeCount
+        clipTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkClipboard() }
         }
+        clipTimer?.tolerance = 0.5
     }
 
     private func send(_ type: String, _ body: Message = [:]) {
@@ -280,6 +285,8 @@ final class ExtrasController {
     }
 
     func phoneDisconnected() {
+        clipTimer?.invalidate()
+        clipTimer = nil
         for (id, file) in incoming {
             try? file.handle.close()
             try? FileManager.default.removeItem(at: file.temp)

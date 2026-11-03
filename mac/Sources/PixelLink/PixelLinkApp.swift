@@ -210,7 +210,7 @@ struct NotificationRow: View {
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    Text(notification.time, style: .relative)
+                    ShortAge(date: notification.time)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -226,6 +226,28 @@ struct NotificationRow: View {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
             }
             .help("Clear on phone")
+        }
+    }
+}
+
+/// "now", "5m", "2h", "Mon" or a date, redrawn once a minute rather than every second.
+struct ShortAge: View {
+    let date: Date
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            Text(Self.format(date, now: context.date))
+        }
+    }
+
+    static func format(_ date: Date, now: Date) -> String {
+        let seconds = now.timeIntervalSince(date)
+        switch seconds {
+        case ..<60: return "now"
+        case ..<3600: return "\(Int(seconds / 60))m"
+        case ..<86_400: return "\(Int(seconds / 3600))h"
+        case ..<(6 * 86_400): return date.formatted(.dateTime.weekday(.abbreviated))
+        default: return date.formatted(.dateTime.day().month(.abbreviated))
         }
     }
 }

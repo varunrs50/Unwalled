@@ -18,7 +18,7 @@ A sleeping phone (Android Doze) pauses its timers, so it may not notice that the
 PLNUDGE1 <first 16 hex chars of the Mac's fingerprint>
 ```
 
-The Mac sends one when it starts, when it wakes from sleep, and every 20 s while the paired phone isn't connected. On a nudge whose fingerprint prefix matches its paired Mac, the phone drops its current connection, if it has one, and reconnects immediately. The nudge carries no secrets and grants nothing: the reconnect still goes through the full TLS pinning.
+The Mac sends one when it starts, when it wakes from sleep, and every 60 s while the paired phone isn't connected. On a nudge whose fingerprint prefix matches its paired Mac, the phone drops its current connection, if it has one, and reconnects immediately. The nudge carries no secrets and grants nothing: the reconnect still goes through the full TLS pinning.
 
 ## Framing
 
@@ -61,7 +61,7 @@ Outside the pairing window, the Mac rejects any certificate that isn't pinned du
 
 The first frame from a paired phone is `hello`. The Mac replies `hello.ack`. After that, frames flow freely in both directions.
 
-Liveness: the phone sends `ping` every 30 s and the Mac answers `pong`. Either side closes the connection if it receives nothing for 75 s. The phone then reconnects with backoff (1 s, 2 s, 4 s … up to 30 s), and immediately whenever Wi-Fi comes back.
+Liveness is designed so a dozing phone isn't woken for nothing. The Mac relies on TCP keepalive (idle 120 s, then 3 probes 20 s apart), which the phone's network stack answers without waking the app. The phone sends `ping` every 4 min and the Mac answers `pong`; either side closes the connection after 15 min with nothing received, as a last resort. After a drop, the phone reconnects with backoff (1 s, 2 s, 4 s … up to 5 min) while on Wi-Fi, doesn't retry at all while off Wi-Fi, and reconnects immediately when it joins Wi-Fi or gets a nudge. `status.update` is sent only when the status changes: battery changes immediately, signal and network are checked every 5 min.
 
 ## Message types
 

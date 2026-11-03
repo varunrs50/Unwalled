@@ -204,9 +204,16 @@ class LinkService : Service() {
                 }
                 if (store.mac == null) return
             }
-            withTimeoutOrNull(backoff) { wake.receive() }
+            // Off Wi-Fi the Mac can't be reached, so don't retry at all: joining Wi-Fi or a nudge
+            // from the Mac wakes us. On Wi-Fi, back off to a few minutes between attempts.
+            if (onWifi()) withTimeoutOrNull(backoff) { wake.receive() } else wake.receive()
             backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF_MS)
         }
+    }
+
+    private fun onWifi(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        return cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
     }
 
     private suspend fun tryConnect(mac: PairedMac): FrameSocket? {
@@ -256,7 +263,11 @@ class LinkService : Service() {
             updateNotification("Connected to $name")
             Log.i(TAG, "Connected to $name")
 
+            // The Mac watches the connection with TCP keepalive, which the phone's network stack
+            // answers without waking this app, so the app's own ping can be rare.
             launch { while (true) { delay(PING_INTERVAL_MS); fs.send("ping") } }
+            lastStatus = null
+            // Battery changes are pushed as they happen; this only catches signal and network changes.
             launch { while (true) { sendStatus(); delay(STATUS_INTERVAL_MS) } }
 
             // Other components queue frames here; one writer keeps them in order and off the main thread.
@@ -350,8 +361,14 @@ class LinkService : Service() {
         }
     }
 
+    @Volatile private var lastStatus: String? = null
+
+    /** Sends the phone's status, but only when something in it has changed. */
     private fun sendStatus() {
-        runCatching { frames?.send("status.update", PhoneStatus.snapshot(this)) }
+        val status = PhoneStatus.snapshot(this)
+        val key = status.toString()
+        if (key == lastStatus) return
+        runCatching { frames?.send("status.update", status) }.onSuccess { lastStatus = key }
     }
 
     private fun forget() {
@@ -450,12 +467,12 @@ class LinkService : Service() {
         private const val EXTRA_PAYLOAD = "payload"
 
         private const val CONNECT_TIMEOUT_MS = 5_000
-        private const val IDLE_TIMEOUT_MS = 75_000
+        private const val IDLE_TIMEOUT_MS = 15 * 60_000
         private const val PAIRING_TIMEOUT_MS = 120_000
-        private const val PING_INTERVAL_MS = 30_000L
-        private const val STATUS_INTERVAL_MS = 60_000L
+        private const val PING_INTERVAL_MS = 4 * 60_000L
+        private const val STATUS_INTERVAL_MS = 5 * 60_000L
         private const val MIN_BACKOFF_MS = 1_000L
-        private const val MAX_BACKOFF_MS = 30_000L
+        private const val MAX_BACKOFF_MS = 5 * 60_000L
         private const val OUTBOX_SIZE = 256
         private const val NUDGE_PORT = 47822
 

@@ -58,8 +58,12 @@ final class LinkServer {
         }, queue)
 
         let tcp = NWProtocolTCP.Options()
+        // TCP keepalive notices a vanished phone; the phone's network stack answers these probes
+        // without waking the app, unlike our own ping. Idle 2 min, then 3 probes 20 s apart.
         tcp.enableKeepalive = true
-        tcp.keepaliveIdle = 30
+        tcp.keepaliveIdle = 120
+        tcp.keepaliveInterval = 20
+        tcp.keepaliveCount = 3
         let params = NWParameters(tls: tls, tcp: tcp)
         params.allowLocalEndpointReuse = true
 
@@ -125,7 +129,8 @@ final class LinkServer {
 
 final class PhoneConnection {
     static let maxFrame = 16 * 1024 * 1024
-    static let idleTimeout: TimeInterval = 75
+    /// A last resort if keepalive misses something; the phone pings every 4 minutes.
+    static let idleTimeout: TimeInterval = 15 * 60
 
     private let nw: NWConnection
     private let queue: DispatchQueue
@@ -229,7 +234,7 @@ final class PhoneConnection {
 
     private func startWatchdog() {
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 15, repeating: 15)
+        timer.schedule(deadline: .now() + 60, repeating: 60, leeway: .seconds(15))
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             if Date().timeIntervalSince(self.lastSeen) > Self.idleTimeout {
