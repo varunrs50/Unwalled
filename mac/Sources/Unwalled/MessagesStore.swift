@@ -33,6 +33,10 @@ final class MessagesStore {
     private(set) var threads: [SmsThread] = []
     private(set) var messages: [Int64: [SmsMessage]] = [:]
     private(set) var lastError: String?
+    /// Which SIM sends texts on a dual-SIM phone; nil uses the phone's default.
+    var sim: Int? = UserDefaults.standard.object(forKey: "sms.sim") as? Int {
+        didSet { UserDefaults.standard.set(sim, forKey: "sms.sim") }
+    }
 
     /// Sends a frame to the phone; set by AppModel.
     @ObservationIgnored var toPhone: ((String, Message) -> Void)?
@@ -77,7 +81,9 @@ final class MessagesStore {
         guard !text.isEmpty, !to.isEmpty else { return }
         let clientID = UUID().uuidString
         lastError = nil
-        toPhone?("sms.send", ["to": to, "body": text, "client_id": clientID])
+        var request: Message = ["to": to, "body": text, "client_id": clientID]
+        if let sim { request["sim"] = sim }
+        toPhone?("sms.send", request)
         if let thread {
             let placeholder = SmsMessage(id: nextPlaceholder, thread: thread, address: to, body: text, time: Date(),
                                          incoming: false, status: .sending)
@@ -85,7 +91,7 @@ final class MessagesStore {
             pending[clientID] = placeholder
             messages[thread, default: []].append(placeholder)
         }
-        Log.info("SMS sent to phone for \(to)")
+        Log.info("SMS sent to phone")
     }
 
     // MARK: From the phone

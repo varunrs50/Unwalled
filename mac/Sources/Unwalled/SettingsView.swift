@@ -30,6 +30,13 @@ struct SettingsView: View {
             }
 
             Section {
+                Button("Report a Problem…") { reportProblem() }
+            } footer: {
+                Text("Opens a bug report on GitHub and shows Unwalled's log file to attach. The log doesn't contain your messages, names or numbers.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
                 Button("Clear History…") { confirmClear = true }
             } footer: {
                 Text("Removes the messages, calls, contacts and photos this Mac keeps from your phone. They're fetched again while it's connected.")
@@ -60,7 +67,20 @@ struct SettingsView: View {
         }
     }
 
-    private func setLaunchAtLogin(_ on: Bool) {
+    private func reportProblem() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        var url = URLComponents(string: "https://github.com/varunrs50/Unwalled/issues/new")!
+        url.queryItems = [
+            .init(name: "template", value: "bug_report.yml"),
+            .init(name: "version", value: version),
+            .init(name: "macos", value: "macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"),
+        ]
+        if let link = url.url { NSWorkspace.shared.open(link) }
+        NSWorkspace.shared.activateFileViewerSelecting([Log.file])
+    }
+
+        private func setLaunchAtLogin(_ on: Bool) {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             loginError = nil

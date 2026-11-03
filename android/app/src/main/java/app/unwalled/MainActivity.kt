@@ -13,6 +13,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -183,7 +185,8 @@ fun HomeScreen(
 
     Scaffold { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            // The setup checklist can be taller than the screen.
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Unwalled", style = MaterialTheme.typography.headlineMedium)
@@ -219,8 +222,15 @@ fun HomeScreen(
 @Composable
 private fun NotPairedContent(onScan: () -> Unit, onPaste: (String) -> Unit) {
     var pasted by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val canScan = remember { app.unwalled.setup.MakerSettings.hasGoogleServices(context) }
     Text("On your Mac, click the Unwalled icon in the menu bar and choose Pair a phone. Then scan the code it shows.")
-    Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) { Text("Scan pairing code") }
+    if (canScan) {
+        Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) { Text("Scan pairing code") }
+    } else {
+        // The in-app scanner comes from Google Play services; the Camera app opens unwalled:// links too.
+        Text("Scan the code with your phone's Camera app, and open the link it finds.", style = MaterialTheme.typography.bodyMedium)
+    }
     Text("Or paste the code copied from the Mac:", style = MaterialTheme.typography.bodySmall)
     OutlinedTextField(
         value = pasted,
@@ -255,6 +265,9 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
     val clipTileAdded = remember(resumeTick) { context.getSharedPreferences("ui", Context.MODE_PRIVATE).getBoolean("clipTile", false) }
     val autoClip = remember(resumeTick) { ClipWatcher.canRun(context) }
     val activity = context as? android.app.Activity
+    val makerGuide = remember { app.unwalled.setup.MakerSettings.guide() }
+    val prefs = context.getSharedPreferences("ui", Context.MODE_PRIVATE)
+    var makerDone by remember(resumeTick) { mutableStateOf(prefs.getBoolean("makerBattery", false)) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -264,7 +277,8 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
     }
 
     val required = listOf(
-        SetupItem("Notifications", "Show this phone's notifications on your Mac and reply from there.", notificationsEnabled, "Allow notification access") {
+        SetupItem("Notifications", "Show this phone's notifications on your Mac and reply from there. If Android says it's a restricted " +
+            "setting: Settings → Apps → Unwalled → ⋮ → Allow restricted settings, then try again.", notificationsEnabled, "Allow notification access") {
             context.startActivity(NotificationBridge.settingsIntent(context))
         },
         SetupItem("Calls", "See who's calling, answer or decline, and call from the Mac. Call audio stays on the phone.", callsAllowed, "Allow calls") {
@@ -284,13 +298,19 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
             "Settings → Apps → Unwalled → ⋮ → Allow restricted settings, then try again.", controlOn, "Turn on phone control") {
             context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         },
-    )
+    ) + listOfNotNull(makerGuide?.let { guide ->
+        SetupItem("${guide.maker} battery setting", "${guide.maker} phones stop background apps on their own. ${guide.steps}",
+            makerDone, "Open settings", secondary = "I've done this" to {
+                prefs.edit().putBoolean("makerBattery", true).apply()
+                makerDone = true
+            }) { guide.open(context) }
+    })
     val optional = listOf(
         SetupItem("Copy to Mac tile", "Send what you've copied to the Mac with one tap from Quick Settings.", clipTileAdded, "Add tile") {
             activity?.let(::requestClipTile)
         },
         SetupItem("Automatic clipboard", "Send what you copy to the Mac without tapping anything. Needs a one-time command from the Mac " +
-            "(see the README, step 9)" + if (ClipWatcher.hasOverlay(context)) "." else ", and display over other apps.",
+            "(see Optional extras in the README)" + if (ClipWatcher.hasOverlay(context)) "." else ", and display over other apps.",
             autoClip, if (ClipWatcher.hasOverlay(context)) null else "Allow display over other apps") {
             context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
         },
@@ -306,14 +326,25 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
         }
     }
 
-    OutlinedButton(onClick = { LinkService.unpair(context) }) { Text("Unpair") }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { LinkService.unpair(context) }) { Text("Unpair") }
+        OutlinedButton(onClick = { activity?.let(app.unwalled.setup.Diagnostics::share) }) { Text("Send diagnostics") }
+    }
 
     if (BuildConfig.DEBUG) {
         OutlinedButton(onClick = { TestNotifications.post(context) }) { Text("Send test notification") }
     }
 }
 
-private class SetupItem(val title: String, val detail: String, val done: Boolean, val action: String?, val onAction: () -> Unit)
+private class SetupItem(
+    val title: String,
+    val detail: String,
+    val done: Boolean,
+    val action: String?,
+    /** A second button, for steps Android can't check (e.g. a phone maker's own setting). */
+    val secondary: Pair<String, () -> Unit>? = null,
+    val onAction: () -> Unit,
+)
 
 /** One line of the setup checklist: a tick when done, otherwise what it's for and a button. */
 @Composable
@@ -325,7 +356,10 @@ private fun SetupRow(item: SetupItem) {
             Text(item.title, style = MaterialTheme.typography.bodyLarge)
             if (!item.done) {
                 Text(item.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                item.action?.let { Button(onClick = item.onAction) { Text(it) } }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item.action?.let { Button(onClick = item.onAction) { Text(it) } }
+                    item.secondary?.let { (label, onClick) -> OutlinedButton(onClick = onClick) { Text(label) } }
+                }
             }
         }
     }

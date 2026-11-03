@@ -80,9 +80,9 @@ Liveness is designed so a dozing phone isn't woken for nothing. The Mac relies o
 
 | Type | Direction | Body |
 |---|---|---|
-| `status.update` | phone → Mac | `{battery: 0-100, charging: bool, signal: 0-4 or null, network: "wifi"|"cellular"|"none", wifi: 0-4 or null}` |
+| `status.update` | phone → Mac | `{battery: 0-100, charging: bool, signal: 0-4 or null, network: "wifi"|"cellular"|"none", wifi: 0-4 or null, sims: [{id, label}]}`. `sims` lists the active SIMs (subscription ID and e.g. "SIM 1 · Jio") only when there are two or more; otherwise it's empty. |
 
-The phone sends `status.update` right after `hello.ack`, whenever battery or charging state changes, and at least every 60 s.
+The phone sends `status.update` right after `hello.ack` and whenever something in it changes: battery and charging straight away, signal, network and SIMs within 5 minutes.
 
 ### Notifications (M2)
 
@@ -160,7 +160,7 @@ Plain SMS only: Android doesn't let other apps read RCS chats or (yet) MMS conte
 | `sms.messages.request` | Mac → phone | `{thread, limit, before?}`: newest `limit` messages of `thread`, optionally older than `before` (Unix ms) |
 | `sms.messages` | phone → Mac | `{thread, messages: [Message]}`, oldest first |
 | `sms.updated` | phone → Mac | `{messages: [Message]}`: new messages, or ones whose status changed (e.g. sending → sent) |
-| `sms.send` | Mac → phone | `{to, body, client_id}`: `to` is a phone number; `client_id` is chosen by the Mac |
+| `sms.send` | Mac → phone | `{to, body, client_id, sim?}`: `to` is a phone number; `client_id` is chosen by the Mac; `sim` is a subscription ID from `status.update`'s `sims` (omitted: the phone's default SIM) |
 | `sms.send.result` | phone → Mac | `{client_id, ok, error?}`: sent from the SIM (or failed). The message itself also arrives in `sms.updated`. |
 | `sms.changed` | phone → Mac | `{}`: SMS just became readable (access granted); request threads again |
 

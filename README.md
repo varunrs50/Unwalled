@@ -103,6 +103,7 @@ The Unwalled app on the phone shows a **Set up** checklist with a button for eac
 | **Photos** | Choose **Allow all** | The Photos window |
 | **Run in the background** | Tap **Allow** | Keeps the connection alive when the phone is idle. **Don't skip this one.** |
 | **Phone control** | In the Accessibility list, tap **Unwalled phone control** and switch it on | Using the phone's screen from the Mac, and opening the camera for Insert from Phone |
+| **⟨Maker⟩ battery setting** (Samsung, Xiaomi, OnePlus…) | Tap **Open settings**, follow the steps shown, then tap **I've done this** | Stops your phone maker's own battery saver from closing Unwalled |
 
 > **"Restricted setting"?** Android blocks some permissions for apps installed outside the Play Store. If it says that for **Notifications** or **Phone control**: open **Settings → Apps → Unwalled**, tap **⋮** (top right), choose **Allow restricted settings**, and try again.
 
@@ -118,7 +119,7 @@ Click the Unwalled icon in the menu bar to see your phone's status, recent notif
 
 | Menu item | What it does |
 |---|---|
-| **Messages…** | Your text conversations. **New Message** starts one. |
+| **Messages…** | Your text conversations. **New Message** starts one. On a dual-SIM phone, the SIM button next to the message box picks which SIM sends it. |
 | **Calls…** | Recent calls and contacts. Click one to call it from the phone. |
 | **Photos…** | All the phone's photos, by album. Click one to open it. |
 | **Phone Screen** | The phone's screen in a window. The first time, tap **Start** on the phone. Click to tap, drag or scroll to swipe, hold for a long press, right-click or Esc for Back, and type into the field you're in (⌘V pastes the Mac clipboard). Back, Home, Recents and **Apps** are in the toolbar. Closing the window pauses sharing; **End** in the menu stops it. |
@@ -196,8 +197,8 @@ If you built Unwalled yourself, use `app.unwalled.debug` instead of `app.unwalle
 
 Make sure **Run in the background** is ticked in the phone's checklist. Some phone makers also need their own setting:
 
-- **Samsung:** **Settings → Battery → Background usage limits → Never sleeping apps**, add Unwalled.
-- **Xiaomi, OnePlus, Oppo, Vivo and others:** see [dontkillmyapp.com](https://dontkillmyapp.com) for your phone.
+- On **Samsung, Xiaomi, OnePlus, Oppo, realme, vivo, Huawei, Honor and ASUS**, the checklist has an extra **battery setting** item for your phone's maker, with the steps and a button that opens the right screen.
+- For other phones, see [dontkillmyapp.com](https://dontkillmyapp.com).
 
 </details>
 
@@ -232,9 +233,9 @@ Turn on **Phone control** in the phone's checklist. If Android says it's a restr
 </details>
 
 <details>
-<summary><b>"Scan pairing code" does nothing</b></summary>
+<summary><b>"Scan pairing code" does nothing, or isn't there</b></summary>
 
-Scan the Mac's QR code with the phone's normal Camera app instead, or click **Copy code** in the Mac's pairing window and paste the text into the box in Unwalled on the phone.
+The in-app scanner comes from Google Play services, so phones without it (some Huawei and Honor models, for example) don't show it. Scan the Mac's QR code with the phone's normal Camera app instead, or click **Copy code** in the Mac's pairing window and paste the text into the box in Unwalled on the phone.
 
 </details>
 
@@ -297,7 +298,12 @@ The Mac announces itself on your Wi-Fi; the phone finds it and stays connected. 
 
 ## Contributing and building from source
 
-Bug reports and pull requests are welcome. When reporting a bug, please include your **phone model and Android version**, your **macOS version**, and what you did, what you expected and what happened.
+Bug reports and pull requests are welcome. The quickest way to report a problem:
+
+1. On the Mac, open **Settings… → Report a Problem…**. It opens a bug report on GitHub, filled in with your Mac's details, and shows Unwalled's log file to attach.
+2. On the phone, scroll to the bottom of Unwalled and tap **Send diagnostics**. Attach the file it creates, which has your phone model, Android version, setup status and Unwalled's own log.
+
+Neither contains your messages, contacts or phone numbers, only device names, versions and what Unwalled was doing.
 
 To build Unwalled yourself or work on the code, see **[docs/BUILDING.md](docs/BUILDING.md)**.
 

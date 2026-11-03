@@ -73,7 +73,7 @@ final class CallController {
         if state == .active, call.activeSince == nil { call.activeSince = Date() }
         current = call
         lastError = nil
-        Log.info("Call \(call.direction) \(state.rawValue)\(call.reason.map { " (\($0))" } ?? "") \(call.displayName)")
+        Log.info("Call \(call.direction) \(state.rawValue)\(call.reason.map { " (\($0))" } ?? "")")
 
         hideTask?.cancel()
         switch state {

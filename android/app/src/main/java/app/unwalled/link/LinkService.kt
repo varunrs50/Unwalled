@@ -315,6 +315,7 @@ class LinkService : Service() {
                     )
                     "sms.send" -> sms.sendSms(
                         frame.body.getString("to"), frame.body.getString("body"), frame.body.getString("client_id"),
+                        frame.body.optInt("sim", -1).takeIf { it >= 0 },
                     )?.let { fs.send("sms.send.result", it, frame.id) }
                     "phone.ring" -> ringer.start()
                     "phone.ring.stop" -> ringer.stop()

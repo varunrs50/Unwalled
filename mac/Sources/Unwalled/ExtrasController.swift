@@ -195,7 +195,7 @@ final class ExtrasController {
                 let size = copy.flatMap { try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize } ?? 0
                 guard let copy else {
                     try? FileManager.default.removeItem(at: dir)
-                    Log.info("Couldn't read \(name): \(error?.localizedDescription ?? "unreadable")")
+                    Log.info("Couldn't read a file to send: \(error?.localizedDescription ?? "unreadable")")
                     self.finish(id, error: "Couldn't read the file")
                     return
                 }
@@ -213,7 +213,7 @@ final class ExtrasController {
         }
         let mime = (try? original.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.preferredMIMEType ?? "application/octet-stream"
         conn.send("file.offer", ["id": id, "name": url.lastPathComponent, "size": size, "mime": mime])
-        Log.info("Sending \(url.lastPathComponent) (\(size) bytes) to phone")
+        Log.info("Sending a file (\(size) bytes) to phone")
 
         // Read and send one chunk at a time, waiting for each to leave before reading the next.
         var hasher = SHA256()
@@ -287,7 +287,7 @@ final class ExtrasController {
             try FileManager.default.moveItem(at: file.temp, to: destination)
             connection?()?.send("file.result", ["id": id, "ok": true])
             finish(id, error: nil)
-            Log.info("Saved \(destination.lastPathComponent) to Downloads")
+            Log.info("Saved a file to Downloads")
             if openWhenDone.remove(id) != nil {
                 NSWorkspace.shared.open(destination)
             } else {
@@ -424,7 +424,7 @@ final class ExtrasController {
         }
         // Don't send this to the phone's clipboard.
         lastChangeCount = pb.changeCount
-        Log.info("Inserting \(name) into \(captureTarget?.localizedName ?? "the front app")")
+        Log.info("Inserting a capture into \(captureTarget?.localizedName ?? "the front app")")
 
         guard AXIsProcessTrusted(), let target = captureTarget else {
             notifyCopied(name)

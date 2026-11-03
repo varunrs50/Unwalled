@@ -17,6 +17,13 @@ struct PhoneStatus: Equatable {
     var signal: Int?
     var network = "none"
     var wifi: Int?
+    /// The phone's SIMs, only when it has more than one.
+    var sims: [SimCard] = []
+}
+
+struct SimCard: Equatable, Hashable {
+    let id: Int        // Android subscription ID
+    let label: String  // e.g. "SIM 1 · Jio"
 }
 
 struct PairingSession {
@@ -146,7 +153,12 @@ final class AppModel {
         pairingTimer = Timer.scheduledTimer(withTimeInterval: Self.pairingWindow, repeats: false) { [weak self] _ in
             Task { @MainActor in self?.cancelPairing(message: "The pairing code expired. Start again to get a new one.") }
         }
+        // The code holds a one-time token, so only development builds log it (tests read it from the log).
+        #if DEBUG
         Log.info("Pairing open: \(payload)")
+        #else
+        Log.info("Pairing open")
+        #endif
     }
 
     func cancelPairing(message: String? = nil) {
@@ -288,7 +300,10 @@ final class AppModel {
                 charging: body["charging"] as? Bool ?? false,
                 signal: body["signal"] as? Int,
                 network: body["network"] as? String ?? "none",
-                wifi: body["wifi"] as? Int)
+                wifi: body["wifi"] as? Int,
+                sims: (body["sims"] as? [Message] ?? []).compactMap { s in
+                    (s["id"] as? Int).map { SimCard(id: $0, label: s["label"] as? String ?? "SIM") }
+                })
             if status != previous { Log.info("Status: battery \(status.battery ?? -1)% charging \(status.charging) signal \(status.signal ?? -1) network \(status.network)") }
 
         case "notif.posted" where isPaired:

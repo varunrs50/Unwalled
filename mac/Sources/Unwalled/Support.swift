@@ -56,9 +56,37 @@ enum NetworkInfo {
     }
 }
 
+/// Logs to stdout and to ~/Library/Logs/Unwalled/Unwalled.log, which "Report a Problem…" points
+/// people to. Nothing personal goes in: no message text, names, numbers or file names.
 enum Log {
+    static let file = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Logs/Unwalled/Unwalled.log")
+    private static let queue = DispatchQueue(label: "app.unwalled.log")
+    private static let maxBytes = 2 << 20
+    private static let handle: FileHandle? = {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Keep one previous log once this one grows past 2 MB.
+        if let size = (try? fm.attributesOfItem(atPath: file.path))?[.size] as? Int, size > maxBytes {
+            let old = file.deletingPathExtension().appendingPathExtension("old.log")
+            try? fm.removeItem(at: old)
+            try? fm.moveItem(at: file, to: old)
+        }
+        if !fm.fileExists(atPath: file.path) { fm.createFile(atPath: file.path, contents: nil) }
+        let h = try? FileHandle(forWritingTo: file)
+        _ = try? h?.seekToEnd()
+        return h
+    }()
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
+
     static func info(_ message: String) {
         print("[Unwalled] \(message)")
         fflush(stdout)
+        let line = "\(stamp.string(from: Date())) \(message)\n"
+        queue.async { handle?.write(Data(line.utf8)) }
     }
 }

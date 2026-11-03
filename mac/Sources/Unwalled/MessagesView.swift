@@ -123,6 +123,7 @@ private struct ConversationView: View {
 
             Divider()
             HStack(alignment: .bottom) {
+                SimPicker()
                 TextField(connected ? "Text message" : "Phone not connected", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
@@ -207,6 +208,7 @@ private struct NewMessageSheet: View {
             }
             TextField("Message", text: $body_, axis: .vertical).lineLimit(3...8)
             HStack {
+                SimPicker()
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Send") {
@@ -220,5 +222,33 @@ private struct NewMessageSheet: View {
         .textFieldStyle(.roundedBorder)
         .padding(20)
         .frame(width: 380)
+    }
+}
+
+/// Which SIM sends the text; only shown on phones with more than one.
+struct SimPicker: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let sims = model.status.sims
+        if sims.count > 1 {
+            @Bindable var store = model.messages
+            // A SIM chosen earlier may no longer be in the phone.
+            let selection = sims.contains { $0.id == store.sim } ? store.sim : nil
+            Menu {
+                Picker("Send from", selection: Binding(get: { selection }, set: { store.sim = $0 })) {
+                    Text("Phone's default SIM").tag(Int?.none)
+                    ForEach(sims, id: \.id) { Text($0.label).tag(Int?.some($0.id)) }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label(sims.first { $0.id == selection }?.label ?? "Default SIM", systemImage: "simcard")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Which SIM sends this text")
+        }
     }
 }

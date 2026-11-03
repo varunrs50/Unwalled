@@ -7,11 +7,26 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
+import org.json.JSONArray
 import org.json.JSONObject
 
 /** Builds the body of a `status.update` frame. */
 object PhoneStatus {
+    /** The active SIMs, so the Mac can offer a choice for texts; empty unless there's more than one. */
+    private fun sims(context: Context): JSONArray {
+        val list = JSONArray()
+        if (context.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) != android.content.pm.PackageManager.PERMISSION_GRANTED) return list
+        val subs = runCatching { context.getSystemService(SubscriptionManager::class.java).activeSubscriptionInfoList }.getOrNull().orEmpty()
+        if (subs.size < 2) return list
+        subs.sortedBy { it.simSlotIndex }.forEach { sub ->
+            val name = (sub.displayName ?: sub.carrierName)?.toString()?.takeIf { it.isNotBlank() }
+            list.put(JSONObject().put("id", sub.subscriptionId).put("label", "SIM ${sub.simSlotIndex + 1}${name?.let { " · $it" } ?: ""}"))
+        }
+        return list
+    }
+
     fun snapshot(context: Context): JSONObject {
         val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = battery?.let {
@@ -37,6 +52,7 @@ object PhoneStatus {
         }
 
         return JSONObject()
+            .put("sims", sims(context))
             .put("battery", level)
             .put("charging", charging)
             .put("signal", signal ?: JSONObject.NULL)

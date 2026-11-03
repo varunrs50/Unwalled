@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Files the camera writes for Insert from Phone. -->
+<!-- Files the camera writes for Insert from Phone, and the diagnostics report. -->
 <paths>
     <cache-path name="camera" path="camera/" />
+    <cache-path name="diagnostics" path="diagnostics/" />
 </paths>

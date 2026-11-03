@@ -107,7 +107,7 @@ final class NotificationRelay: NSObject, UNUserNotificationCenterDelegate {
         center.add(UNNotificationRequest(identifier: n.id, content: content, trigger: nil)) { error in
             if let error { Log.info("Couldn't show notification: \(error)") }
         }
-        Log.info("Notification from \(n.app): \(content.title)")
+        Log.info("Notification from \(n.app)")
     }
 
     /// Picture (e.g. contact photo) if the phone sent one, otherwise the app's icon.

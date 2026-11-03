@@ -49,7 +49,7 @@ class FileTransfer(private val context: Context) {
             temp = temp,
             out = FileOutputStream(temp),
         )
-        Log.i(TAG, "Receiving ${body.getString("name")} (${body.getLong("size")} bytes)")
+        Log.i(TAG, "Receiving a file (${body.getLong("size")} bytes)")
     }
 
     /** Returns a failure `file.result` if the chunk is bad, otherwise null. */
@@ -77,7 +77,7 @@ class FileTransfer(private val context: Context) {
         return try {
             val uri = saveToDownloads(file)
             notifyReceived(file.name, uri, file.mime)
-            Log.i(TAG, "Saved ${file.name} to Downloads/Unwalled")
+            Log.i(TAG, "Saved a file to Downloads/Unwalled")
             JSONObject().put("id", id).put("ok", true)
         } catch (e: Exception) {
             JSONObject().put("id", id).put("ok", false).put("error", "Couldn't save: ${e.message}")
@@ -162,7 +162,7 @@ class FileTransfer(private val context: Context) {
             }
         }
         fs.send("file.done", JSONObject().put("id", id).put("sha256", digest.digest().joinToString("") { "%02x".format(it) }))
-        Log.i(TAG, "Sent $name ($size bytes) to the Mac")
+        Log.i(TAG, "Sent a file ($size bytes) to the Mac")
     }
 
     companion object {

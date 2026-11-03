@@ -1,0 +1,50 @@
+name: Something isn't working
+description: Report a problem with Unwalled on your phone or Mac.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The more of this you can fill in, the faster it gets fixed. Diagnostics from the phone and the Mac log help most; neither contains your messages, names or numbers.
+  - type: input
+    id: phone
+    attributes:
+      label: Phone
+      description: Maker and model, e.g. Samsung Galaxy S21
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version
+      description: Settings → About phone → Software information (on Samsung, also the One UI version)
+      placeholder: e.g. Android 15, One UI 7
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+  - type: input
+    id: version
+    attributes:
+      label: Unwalled version
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Phone diagnostics
+      description: In Unwalled on the phone, scroll down and tap **Send diagnostics**, then paste it here or attach the file.
+      render: text
+  - type: textarea
+    id: maclog
+    attributes:
+      label: Mac log
+      description: In Unwalled's Settings on the Mac, click **Report a Problem…**; it shows the log file. Attach it or paste the last part.
+      render: text

@@ -107,6 +107,9 @@ class CameraCaptureActivity : ComponentActivity() {
 
     private fun start(locked: Boolean) {
         if (intent.getStringExtra(EXTRA_MODE) == "scan") {
+            if (!app.unwalled.setup.MakerSettings.hasGoogleServices(this)) {
+                return done(false, "Scanning documents needs Google Play services, which this phone doesn't have. Take a photo instead.")
+            }
             val options = GmsDocumentScannerOptions.Builder()
                 .setGalleryImportAllowed(true)
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG, GmsDocumentScannerOptions.RESULT_FORMAT_PDF)

@@ -148,6 +148,8 @@ class ScreenCaptureService : Service() {
     private val thread = HandlerThread("screen-capture").apply { start() }
     private val handler = Handler(thread.looper)
     private var size = 0 to 0
+    /** The phone's own screen size when the encoder was set up; rotating changes it. */
+    private var screen = 0 to 0
     @Volatile var streaming = false
         private set
     /** The mirrored screen is the phone's real one: wake it when the Mac opens it, and don't let it sleep while shown. */
@@ -159,7 +161,7 @@ class ScreenCaptureService : Service() {
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayChanged(displayId: Int) {
             // Rotation changes the screen's shape; restart the encoder at the new size.
-            if (streaming && displayId == Display.DEFAULT_DISPLAY && targetSize() != size) handler.post { restartEncoder() }
+            if (streaming && displayId == Display.DEFAULT_DISPLAY && screenSize() != screen) handler.post { restartEncoder() }
         }
         override fun onDisplayAdded(displayId: Int) {}
         override fun onDisplayRemoved(displayId: Int) {}
@@ -220,7 +222,7 @@ class ScreenCaptureService : Service() {
         }
         streaming = true
         awake.acquire(4 * 60 * 60_000L)
-        startEncoder()
+        if (!startEncoderOrReport()) return@post
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(streaming = true))
         val locked = getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
         ScreenMirror.state("running")
@@ -247,28 +249,29 @@ class ScreenCaptureService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(streaming = false))
     }
 
-    /** The phone's screen scaled so the long side is at most [MAX_SIDE], in multiples of 16. */
-    private fun targetSize(): Pair<Int, Int> {
-        val bounds = getSystemService(android.view.WindowManager::class.java).maximumWindowMetrics.bounds
-        val (w, h) = bounds.width() to bounds.height()
-        val scale = minOf(1f, MAX_SIDE.toFloat() / maxOf(w, h))
-        fun even(v: Float) = (v / 16).toInt() * 16
-        return even(w * scale) to even(h * scale)
+    private fun screenSize(): Pair<Int, Int> =
+        getSystemService(android.view.WindowManager::class.java).maximumWindowMetrics.bounds.let { it.width() to it.height() }
+
+    /**
+     * Sizes to try, largest first: the screen scaled so its long side is at most 1600, 1280, 960 or
+     * 720 px, aligned the way this encoder needs. Phone makers' encoders differ in what they accept.
+     */
+    private fun candidateSizes(caps: MediaCodecInfo.VideoCapabilities): List<Pair<Int, Int>> {
+        val (w, h) = screen
+        val alignW = maxOf(16, caps.widthAlignment)
+        val alignH = maxOf(16, caps.heightAlignment)
+        return LONG_SIDES.map { side ->
+            val scale = minOf(1f, side.toFloat() / maxOf(w, h))
+            ((w * scale).toInt() / alignW * alignW) to ((h * scale).toInt() / alignH * alignH)
+        }.distinct().filter { (cw, ch) -> cw > 0 && ch > 0 && caps.isSizeSupported(cw, ch) }
     }
 
     private fun startEncoder() {
-        size = targetSize()
-        val (w, h) = size
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
-            setInteger(MediaFormat.KEY_FRAME_RATE, 60)
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
-            setInteger(MediaFormat.KEY_PRIORITY, 0)
-            setInteger(MediaFormat.KEY_LATENCY, 1)
-        }
+        screen = screenSize()
         val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        encoder.setCallback(object : MediaCodec.Callback() {
+        val caps = encoder.codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities
+            ?: run { encoder.release(); throw IllegalStateException("No H.264 video capabilities") }
+        val callback = object : MediaCodec.Callback() {
             override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {}
             override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
                 val buffer = runCatching { codec.getOutputBuffer(index) }.getOrNull()
@@ -290,8 +293,35 @@ class ScreenCaptureService : Service() {
                 handler.post { if (streaming) { stopStreaming(); ScreenMirror.state("error", "The phone's video encoder stopped") } }
             }
             override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {}
-        }, handler)
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        }
+        // Take the largest size this encoder accepts; some reject sizes their capabilities list.
+        var chosen: Pair<Int, Int>? = null
+        for (candidate in candidateSizes(caps)) {
+            val (cw, ch) = candidate
+            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, cw, ch).apply {
+                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                setInteger(MediaFormat.KEY_BIT_RATE, caps.bitrateRange.clamp(BIT_RATE))
+                setInteger(MediaFormat.KEY_FRAME_RATE, 60)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
+                setInteger(MediaFormat.KEY_PRIORITY, 0)
+                setInteger(MediaFormat.KEY_LATENCY, 1)
+            }
+            try {
+                encoder.setCallback(callback, handler)
+                encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                chosen = candidate
+                break
+            } catch (e: Exception) {
+                Log.i(TAG, "Encoder refused ${cw}x$ch: ${e.message}")
+                encoder.reset()
+            }
+        }
+        if (chosen == null) {
+            encoder.release()
+            throw IllegalStateException("This phone's video encoder doesn't support any mirroring size")
+        }
+        size = chosen
+        val (w, h) = chosen
         val surface = encoder.createInputSurface()
         write(0, 0, JSONObject().put("width", w).put("height", h).toString().toByteArray())
         encoder.start()
@@ -308,8 +338,18 @@ class ScreenCaptureService : Service() {
     private fun restartEncoder() {
         codec?.let { runCatching { it.stop() }; it.release() }
         codec = null
+        if (startEncoderOrReport()) Log.i(TAG, "Screen mirroring resized to ${size.first}x${size.second}")
+    }
+
+    /** Starts the encoder, or stops streaming and tells the Mac why it couldn't. */
+    private fun startEncoderOrReport(): Boolean = try {
         startEncoder()
-        Log.i(TAG, "Screen mirroring resized to ${size.first}x${size.second}")
+        true
+    } catch (e: Exception) {
+        Log.w(TAG, "Couldn't start the video encoder: ${e.message}")
+        stopStreaming()
+        ScreenMirror.state("error", "This phone's video encoder couldn't start: ${e.message}")
+        false
     }
 
     fun requestKeyFrame() = handler.post { requestKeyFrameNow() }
@@ -355,7 +395,8 @@ class ScreenCaptureService : Service() {
         private const val CHANNEL = "mirror.active"
         private const val NOTIFICATION_ID = 9
         private const val ACTION_END = "app.unwalled.action.END_MIRROR"
-        private const val MAX_SIDE = 1600
+        /** Long sides to try, largest first; the first one the encoder accepts is used. */
+        private val LONG_SIDES = listOf(1600, 1280, 960, 720)
         private const val BIT_RATE = 6_000_000
         @Volatile var instance: ScreenCaptureService? = null
             private set

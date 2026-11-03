@@ -115,12 +115,14 @@ class SmsBridge(private val context: Context, private val send: (String, JSONObj
         return JSONObject().put("thread", thread).put("messages", JSONArray(rows))
     }
 
-    fun sendSms(to: String, body: String, clientId: String): JSONObject? {
+    /** `sim` is a subscription ID from `status.update`'s `sims`; null or unknown uses the default SIM. */
+    fun sendSms(to: String, body: String, clientId: String, sim: Int? = null): JSONObject? {
         if (context.checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
             return JSONObject().put("client_id", clientId).put("ok", false).put("error", "SMS permission not granted")
         }
         return try {
-            val sms = context.getSystemService(SmsManager::class.java)
+            val default = context.getSystemService(SmsManager::class.java)
+            val sms = sim?.takeIf { it >= 0 }?.let { runCatching { default.createForSubscriptionId(it) }.getOrNull() } ?: default
             val parts = sms.divideMessage(body)
             val sent = PendingIntent.getBroadcast(
                 context, clientId.hashCode(),
