@@ -45,7 +45,7 @@ Unwalled $VERSION: use your Android phone from your Mac.
 
 **First launch on the Mac:** Unwalled isn't notarized by Apple yet, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
-Then follow the setup steps in the [README](https://github.com/varunrs50/Unwalled#setup-step-by-step), starting from pairing.
+Then pair and set up as described in the [README](https://github.com/varunrs50/Unwalled#set-up).
 
 Checksums are in \`SHA256SUMS.txt\`.
 EOF
