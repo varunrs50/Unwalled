@@ -307,6 +307,18 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
         }
     }
 
+    val controlOn = remember(resumeTick) { app.pixellink.mirror.ControlService.isEnabled(context) }
+    if (!controlOn) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Control this phone with your Mac's mouse and keyboard while its screen is shown on the Mac.")
+                Text("In the list that opens, tap PixelLink phone control and switch it on. If Android says it's a restricted setting, open Settings → Apps → PixelLink, tap ⋮ and choose Allow restricted settings, then try again.",
+                    style = MaterialTheme.typography.bodySmall)
+                Button(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Turn on phone control") }
+            }
+        }
+    }
+
     val autoClip = remember(resumeTick) { ClipWatcher.canRun(context) }
     if (!autoClip) {
         Card(modifier = Modifier.fillMaxWidth()) {

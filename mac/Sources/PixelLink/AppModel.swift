@@ -47,6 +47,7 @@ final class AppModel {
     @ObservationIgnored let calls = CallController()
     @ObservationIgnored let messages = MessagesStore()
     @ObservationIgnored let extras = ExtrasController()
+    @ObservationIgnored let screen = ScreenMirrorController()
 
     @ObservationIgnored private var server: LinkServer?
     @ObservationIgnored private weak var session: PhoneConnection?
@@ -69,6 +70,8 @@ final class AppModel {
         calls.send = { [weak self] type, body in self?.session?.send(type, body) }
         messages.toPhone = { [weak self] type, body in self?.session?.send(type, body) }
         extras.connection = { [weak self] in self?.state == .connected ? self?.session : nil }
+        screen.connection = { [weak self] in self?.state == .connected ? self?.session : nil }
+        screen.phoneName = { [weak self] in self?.paired?.name ?? "Phone" }
         relay.onCallBack = { [weak self] number in self?.calls.dial(number) }
         #if DEBUG
         listenForDebugCommands()
@@ -80,6 +83,7 @@ final class AppModel {
             server.onConnected = { [weak self] conn in self?.connected(conn) }
             server.onDisconnected = { [weak self] conn in self?.disconnected(conn) }
             server.onMessage = { [weak self] conn, type, body, id in self?.handle(conn, type, body, id) }
+            server.onVideo = { [weak self] nw in self?.screen.accept(nw) }
             try server.start()
             self.server = server
             self.identity = identity
@@ -215,6 +219,7 @@ final class AppModel {
             session = nil
             calls.phoneDisconnected()
             extras.phoneDisconnected()
+            screen.phoneDisconnected()
             if paired != nil { state = .waiting }
         }
     }
@@ -302,6 +307,8 @@ final class AppModel {
         case "file.cancel" where isPaired: extras.cancel(body)
         case "file.result" where isPaired: extras.result(body)
         case "photos.list" where isPaired: extras.photosList(body)
+        case "screen.state" where isPaired: screen.phoneState(body)
+        case "apps.list" where isPaired: screen.appsList(body)
 
         case "sms.threads" where isPaired:
             messages.received(threads: body)
@@ -381,6 +388,20 @@ extension AppModel {
                     self.extras.download(self.extras.photos[i])
                 }
                 if command.hasPrefix("send:") { self.extras.sendFile(URL(fileURLWithPath: String(command.dropFirst(5)))) }
+            }
+        }
+        // "…mirror" with object screen | stop | apps | app:<package>
+        dnc.addObserver(forName: .init(prefix + "mirror"), object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let command = note.object as? String else { return }
+                if command == "screen" { self.screen.show() }
+                if command == "stop" { self.screen.stop() }
+                if command == "apps" { self.screen.requestApps() }
+                if command.hasPrefix("app:") {
+                    let id = String(command.dropFirst(4))
+                    self.screen.launch(self.screen.apps.first { $0.id == id } ?? PhoneApp(id: id, label: id, icon: nil))
+                }
+                Log.info("Mirror: screen \(self.screen.state), control \(self.screen.canControl), apps \(self.screen.apps.count)")
             }
         }
         // "…smsload" with object "<thread id>": load a conversation, as opening it in Messages does.

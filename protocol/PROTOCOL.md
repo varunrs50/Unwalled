@@ -220,6 +220,28 @@ The sender sends chunks one after another as fast as the connection accepts them
 | `photos.list` | phone → Mac | `{photos: [{id, name, time, width, height, size, thumb}], offset, total, album, albums: [{name, count}]}`, newest first. `thumb` is a base64 JPEG ≤240 px; `total` counts the photos in `album`; `albums` lists every folder, largest first. |
 | `photos.get` | Mac → phone | `{id}`: the phone sends the full image as a file transfer (`file.offer` …) whose `id` is `photo-<id>` |
 
+### Screen mirroring (M6)
+
+The phone captures its own screen with Android's screen-capture permission (MediaProjection), encodes it with the hardware H.264 encoder, and streams it on a **separate TLS connection to the Mac's port + 3 (47823)**, pinned to the same certificates as the message channel. Pairing never happens on that port. Control goes over the message channel through the phone's Accessibility service.
+
+Session: Android requires the user to approve each capture session. Once approved, the phone keeps the session open while paused (no encoder, no connection, virtual display without a surface), so the Mac can resume it without asking again. Android ends it on restart, and **when the phone locks** unless the app has the `PROJECT_MEDIA` app-op (granted once over adb), which also skips the approval dialog.
+
+| Type | Direction | Body |
+|---|---|---|
+| `screen.start` | Mac → phone | `{}`: resume the session, or ask the user to approve a new one |
+| `screen.stop` | Mac → phone | `{}`: pause; the session stays open |
+| `screen.end` | Mac → phone | `{}`: end the session; the next start asks again |
+| `screen.keyframe` | Mac → phone | `{}`: send a key frame now (e.g. after the window opened) |
+| `screen.state` | phone → Mac | `{state, control, error?}`. `state` is `waiting` (asking the user), `running`, `paused` (session kept), `ended`, `declined` or `error`. `control` says whether the Accessibility service is on. Sent on changes and after every `hello`. |
+| `input.touch` | Mac → phone | `{action, x, y}`: a live finger; `action` is `down`, `move` or `up`, `x`/`y` run from 0 to 1 across the screen. Moves come at up to ~60 per second; the phone merges any that arrive while it's busy. |
+| `input.key` | Mac → phone | `{key}`: `back`, `home`, `recents`, `notifications`, `lock`, or `backspace`/`enter` in the focused text field |
+| `input.text` | Mac → phone | `{text}`: typed into the focused text field at the cursor |
+| `apps.request` | Mac → phone | `{}` |
+| `apps.list` | phone → Mac | `{apps: [{package, label, icon}]}`, launchable apps sorted by name; `icon` is a base64 PNG, 64 px |
+| `apps.launch` | Mac → phone | `{package}`: open that app on the phone |
+
+Video packets: `u32` big-endian length, then `u8` kind, `u64` presentation time in µs, payload. Kinds: `0` JSON `{width, height}` (sent first and after every resize, e.g. rotation), `1` codec config (SPS/PPS, Annex-B), `2` key frame, `3` frame (Annex-B). A still screen sends no frames. The long side is at most 1600 px; 6 Mbit/s, up to 60 fps.
+
 ### Later milestones
 
 Notifications, SMS, calls, files and the other message types are listed in PLAN.md §4. Each gets its body format here as its milestone is built.

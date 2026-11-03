@@ -63,16 +63,15 @@ Make the Mac feel like it "has" the phone — the way an iPhone and Mac work tog
 - SMS threads and the call log are cached in SQLite, so the windows open instantly and show recent history even while the phone is offline.
 - Launch at login uses `SMAppService`.
 
-**Screen mirroring (adb route)**
+**Screen mirroring (native)**
 
-Mirroring uses Android's debugging channel instead of our own connection. It's the same approach as the open-source scrcpy, whose phone-side server (Apache 2.0) we build on.
+Mirroring runs inside PixelLink itself, so nobody needs developer options. An earlier version used adb and scrcpy; it was dropped because Android 17 won't let apps switch Wireless debugging on, and Android switches it off after every restart and Wi-Fi change.
 
-- The Mac app bundles `adb` and the scrcpy server. When you open the Phone window, it connects through Wireless debugging (found via mDNS `_adb-tls-connect._tcp`), pushes the server and starts it.
-- Video arrives as H.264/H.265, decoded with VideoToolbox and drawn in a Metal view. Audio (Android 11+) plays through the Mac.
-- Mouse, scroll and keyboard are sent back as touch and key events, and the clipboard stays in sync while the window is open.
-- **App windows:** a single Android app can be launched on its own virtual display and shown in its own Mac window, with launchers in the menu bar for favourite apps.
-- **Keeping Wireless debugging on:** Android sometimes switches Wireless debugging off, for example after a Wi-Fi change. During setup we run a one-time `adb shell pm grant <app> android.permission.WRITE_SECURE_SETTINGS`. After that, `LinkService` switches Wireless debugging back on whenever the phone joins the paired home Wi-Fi, so mirroring is always ready.
-- No "start recording" prompt on the phone, because the server runs with debugging privileges.
+- The phone captures its screen with MediaProjection and the hardware H.264 encoder, and streams it over a pinned TLS connection to the Mac's port + 3. The Mac decodes it in hardware (AVSampleBufferDisplayLayer) in a window shaped like the phone.
+- Control goes through an Accessibility service the user switches on once: a live finger made of continued gesture strokes (clicks, drags, trackpad scrolling with Android's own fling), global actions (Back, Home, Recents, Notifications) and typing into the focused field.
+- **Approve once:** Android asks for every capture session, so PixelLink keeps an approved session open but paused (nothing captured or sent) and resumes it without asking. Android still ends it on restart and on lock (`STOP_REASON_KEYGUARD`), unless the app has the `PROJECT_MEDIA` app-op, which is granted once over adb and also skips the dialog.
+- While showing, the phone holds a dim-screen wake lock (the mirrored screen is the real one); closing the window releases it.
+- **Not possible natively:** separate windows for single apps. Launching other apps onto an extra display needs system privileges. A later option is a Shizuku-style helper started over Wireless debugging once per restart.
 
 **Camera**
 
@@ -115,7 +114,7 @@ Nothing ever leaves the local network, and there is no cloud or account.
 | `media.state` / `media.control` | both | Now playing and play/pause/skip |
 | `phone.ring` | Mac → phone | Find my phone (alarm stream, ignores silent mode) |
 | `camera.capture` / `camera.result` | both | Insert from Pixel (photo or scan) |
-| `adb.ensure` | Mac → phone | Ask the phone to switch Wireless debugging on before mirroring |
+| `screen.*` / `input.*` / `apps.*` | both | Screen mirroring, control and app launching (see PROTOCOL.md) |
 
 The protocol is written down in `protocol/PROTOCOL.md`, with JSON samples that both apps test against so they can't drift apart.
 
@@ -133,7 +132,7 @@ The app is installed directly (adb or APK), not from the Play Store, which is wh
 | 6 | Contacts | Names and photos |
 | 7 | Photos (`READ_MEDIA_IMAGES`, full access) | Photo browser |
 | 8 | Ignore battery optimisation | Stop Android from killing the connection |
-| 9 | Wireless debugging paired + `WRITE_SECURE_SETTINGS` (granted once through adb, done by the Mac app) | Screen mirroring; keep Wireless debugging switched on |
+| 9 | Screen capture approval (each session) and the Accessibility service "PixelLink phone control"; optionally `PROJECT_MEDIA` granted once over adb | Phone screen on the Mac and controlling it |
 
 If Android shows "Restricted setting" for notification access or SMS, the onboarding screen links to **App info → ⋮ → Allow restricted settings**.
 
@@ -159,13 +158,13 @@ Each milestone ends with something running on your Pixel and Mac that you can tr
 | **M3** | Calls | Incoming call popup with name and photo; Answer and Decline work; click-to-call dials; call log window. |
 | **M4** | SMS | Messages window shows all threads; sending works with delivery status; new messages appear live. |
 | **M5** | Files, photos, clipboard, extras | Share sheet → Mac and drag → phone; recent photos; clipboard both ways; Find my phone; media controls. |
-| **M6** | Screen mirroring | Phone window with control and audio from the Mac; single-app windows; Wireless debugging switches itself back on after a Wi-Fi change or reboot. |
+| **M6** | Screen mirroring | Phone window with mouse and keyboard control from the Mac, native (no developer options), approved once. |
 | **M7** | Camera | Insert from Pixel (photo and scan) works in Notes, Mail and Finder; USB webcam mode documented in onboarding. |
 | **M8** | Polish & hardening | Onboarding checklist, settings, launch at login, unpair, clear history; battery drain under 3 %/day from the app. |
 
 M1 has to be solid before anything else. A flaky connection would make every later feature feel broken.
 
-Mirroring comes after the everyday features (M2–M5) because those are what you'll use all day. Mirroring is also mostly separate from our own connection, since it runs over adb, so it can move earlier at any point without reshuffling the rest.
+Mirroring comes after the everyday features (M2–M5) because those are what you'll use all day.
 
 ## 8. Testing
 
@@ -185,9 +184,8 @@ Mirroring comes after the everyday features (M2–M5) because those are what you
 | Bonjour unreliable on some routers | Phone can't find the Mac | Fall back to the last known IP; manual IP entry in settings |
 | Mac app without full Xcode | Notifications and signing are fiddly | Install Xcode before M0 |
 | RCS history inaccessible | Messages window misses RCS chats | Explain it in the UI; RCS still works through notifications |
-| Wireless debugging switched off by Android | Mirroring unavailable | Phone app re-enables it with `WRITE_SECURE_SETTINGS`; Mac app shows a "re-pair" button if the grant is lost (e.g. after a factory reset) |
-| Wireless debugging open on the LAN | Wider attack surface | Only paired keys can connect; switched on only on the paired home Wi-Fi, off elsewhere |
-| scrcpy server changes between versions | Mirroring breaks after an update | Pin the bundled server version; update deliberately |
+| Android ends screen sharing on lock | Phone screen needs approving again | Keep the approved session paused; document the one-time `PROJECT_MEDIA` grant |
+| Accessibility is a "restricted setting" for sideloaded apps | Users can't switch phone control on | In-app card explains "Allow restricted settings" |
 
 ## 10. After v1 (2.0 ideas)
 
@@ -213,3 +211,4 @@ Mirroring comes after the everyday features (M2–M5) because those are what you
 | M3 Calls | ✅ Done | Call pop-up fixed to stay visible above all apps and take the first click. Wake-up nudge added: a sleeping phone reconnects within ~1 s after the Mac restarts or wakes (was ~100 s, and only when something else woke the phone). Incoming-call pop-up with name and photo; answer, decline and hang up from the Mac; silence (mutes the ringer for that call, since Android reserves the real "silence" for the dialer); missed-call alert with Call Back; dial from the Calls window or `tel:` links; call log and contacts. On the Pixel: real incoming calls show with the contact name and end as missed with an alert; call log (3,017) and contacts (826) synced. Real calls: declined from the Mac pop-up, and answered then completed, on two calls in a row. |
 | M4 SMS | ✅ Done | Messages window: threads with contact names, conversation history, live incoming texts, sending from the SIM with sending → sent status, new conversations. Texts with one-time codes are hidden from apps by Android for a while (they still arrive as notifications). On the Pixel: 200 threads with names; sending from the Mac works and pushes exactly one update. Fixed: providers ignore query limits, which flooded the Mac with ~8,900 messages per change. Not yet seen: a failed send. |
 | M5 Files, photos, clipboard, extras | ✅ Done, tested on the Pixel | Find my phone (rings on the alarm stream, stops from Mac or phone). Clipboard both ways and automatic: Mac → phone on copy (skips password-manager text); phone → Mac by watching for Android's clipboard-denied log line (READ_LOGS granted over adb, "Display over other apps", and Android's log-access prompt after each restart), with the Quick Settings tile and notification button as fallbacks. Files both ways with checksum (60 MB in 13 s; iCloud placeholders are downloaded first). Photos window with all photos, albums and paging. Now-playing controls that follow whichever app is playing. |
+| M6 Screen mirroring | ✅ Done, tested on the Pixel | Native capture (MediaProjection + hardware H.264, 704×1600, still screen sends nothing) on its own pinned TLS stream; hardware-decoded Mac window with Back/Home/Recents/Notifications/Apps. Control via Accessibility: live touch from mouse and trackpad, typing, app launching. Approve once: session kept paused between windows; Android ends it on lock (`STOP_REASON_KEYGUARD`) unless `PROJECT_MEDIA` is granted once over adb, verified on the Pixel to skip the prompt and survive locking. The scrcpy/adb route was built and removed (Android 17 blocks switching Wireless debugging on). Not done: phone sound, separate app windows. |

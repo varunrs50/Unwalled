@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phone control while mirroring: gestures, plus window content only to find the focused text field for typing. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/control_service_description"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="1000" />

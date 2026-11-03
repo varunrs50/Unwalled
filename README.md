@@ -2,9 +2,9 @@
 
 **Use your Android phone from your Mac, the way an iPhone works with a Mac.**
 
-Calls, text messages, notifications, files, photos, clipboard and media controls from your Android phone, built into your Mac's menu bar. It's not screen mirroring: everything shows up as native macOS notifications and windows. It works over your home Wi-Fi with no cloud, no account and no server in between.
+Calls, text messages, notifications, files, photos, clipboard and media controls from your Android phone, built into your Mac's menu bar, as native macOS notifications and windows. When you do need the phone itself, its screen opens in a Mac window you can control with your mouse and keyboard. It works over your home Wi-Fi with no cloud, no account and no server in between.
 
-> **Status: early, but working.** Milestones M0–M5 are built and tested on a Pixel 9 Pro (Android 17) with an Apple Silicon MacBook Air (macOS 15+). Screen mirroring (M6) is in progress. Expect rough edges, and please [open an issue](../../issues) if something breaks.
+> **Status: early, but working.** Milestones M0–M6 are built and tested on a Pixel 9 Pro (Android 17) with an Apple Silicon MacBook Air (macOS 15+). Expect rough edges, and please [open an issue](../../issues) if something breaks.
 
 ---
 
@@ -24,7 +24,8 @@ Calls, text messages, notifications, files, photos, clipboard and media controls
   - [Step 7: Pair the phone with the Mac](#step-7-pair-the-phone-with-the-mac)
   - [Step 8: Grant the phone permissions](#step-8-grant-the-phone-permissions)
   - [Step 9 (optional): Automatic phone → Mac clipboard](#step-9-optional-automatic-phone--mac-clipboard)
-  - [Step 10 (optional): Start PixelLink at login](#step-10-optional-start-pixellink-at-login)
+  - [Step 10 (optional): Phone screen without asking](#step-10-optional-phone-screen-without-asking-even-when-locked)
+  - [Step 11 (optional): Start PixelLink at login](#step-11-optional-start-pixellink-at-login)
 - [Using PixelLink](#using-pixellink)
 - [Troubleshooting](#troubleshooting)
 - [Privacy and security](#privacy-and-security)
@@ -50,6 +51,7 @@ Calls, text messages, notifications, files, photos, clipboard and media controls
 | **Clipboard** | Copy on the Mac and paste on the phone, or the other way round. Password-manager copies are never sent. |
 | **Files** | Drag files onto the menu bar panel to send them to the phone, or share anything from the phone with **Send to Mac**. Every transfer is checked with a SHA-256 checksum. |
 | **Photos** | A **Photos** window with every photo on the phone, browsable by album. Click one to download it. |
+| **Phone screen** | The phone's screen in a Mac window: click to tap, drag or scroll to swipe, type into text fields, with Back, Home, Recents and an **Apps** list in the toolbar. Approve it once on the phone and it opens without asking after that. |
 | **Status** | Battery, signal and Wi-Fi of the phone in the menu bar. |
 
 ## What it can't do (yet)
@@ -58,7 +60,8 @@ Calls, text messages, notifications, files, photos, clipboard and media controls
 - **RCS / iMessage-style chats:** only SMS are read and sent. Google Messages RCS chats still show up as notifications you can reply to.
 - **One-time codes (OTPs):** Android 15+ hides SMS one-time codes from apps, so these show "No preview" in the Messages window. They still appear as notifications.
 - **Away from home:** both devices must be on the same Wi-Fi network for now.
-- **Screen mirroring:** in progress (M6).
+- **Separate app windows:** the phone screen opens as one window. Putting single apps in windows of their own needs system-level access that Android doesn't give regular apps.
+- **Phone sound in the mirroring window:** not yet.
 
 ## How it works
 
@@ -262,6 +265,7 @@ The PixelLink app on the phone shows a card for each feature that still needs a 
 | **Allow photos** | Choose **Allow all** | Photos window |
 | **Allow** (background) | Allow PixelLink to run in the background | Keeps the connection alive when the phone is idle |
 | **Add Copy to Mac tile** | Tap **Add tile** | One-tap phone → Mac clipboard from Quick Settings |
+| **Turn on phone control** | In Accessibility, tap **PixelLink phone control** and switch it on. If Android says it's a *restricted setting*: **Settings → Apps → PixelLink → ⋮ → Allow restricted settings**, then try again. | Controlling the phone from its screen window on the Mac |
 
 > **Important:** don't skip the background (battery) permission. Without it Android may cut the connection after a while.
 
@@ -288,7 +292,19 @@ Things to know:
 - Text that just came from the Mac is never sent back, so nothing bounces between the two.
 - To turn it off, clear the Mac clipboard sync checkbox, or remove the permission: `adb shell pm revoke app.pixellink.debug android.permission.READ_LOGS`.
 
-### Step 10 (optional): Start PixelLink at login
+### Step 10 (optional): Phone screen without asking, even when locked
+
+By default, Android asks you to approve screen sharing on the phone the first time you open **Phone Screen**. PixelLink then keeps that approval until the phone restarts **or locks**. To skip the approval completely, so the phone's screen opens from the Mac even when the phone is locked in another room, run this once with the phone connected to adb (step 5):
+
+```bash
+adb shell appops set app.pixellink.debug PROJECT_MEDIA allow
+```
+
+It lasts until PixelLink is uninstalled; Wireless debugging can be switched off afterwards. To undo it: `adb shell appops set app.pixellink.debug PROJECT_MEDIA default`.
+
+> Android may hide the lock screen from screen captures, so a locked phone can show up black on the Mac until it's unlocked on the phone.
+
+### Step 11 (optional): Start PixelLink at login
 
 On the Mac: **System Settings → General → Login Items & Extensions → Open at Login → +**, then choose **PixelLink**. The phone app starts on its own after the phone reboots.
 
@@ -304,6 +320,7 @@ On the Mac: **System Settings → General → Login Items & Extensions → Open 
 | **Calls…** | Recent calls and contacts. Click one to call it from the phone. |
 | **Photos…** | All photos on the phone; pick an album from the toolbar. Click a photo to download it to **Downloads** and open it. |
 | **Send File to Phone…** | Pick files to send. You can also drag files onto the open menu bar panel. |
+| **Phone Screen** | Opens the phone's screen in a window. The first time, tap **Start** on the phone. Click to tap, drag or scroll to swipe, hold for a long press, right-click or Esc for Back, and type into the field you're in (⌘V types the Mac clipboard). The toolbar has Back, Home, Recents, Notifications and **Apps**. Closing the window pauses sharing; **End** in the menu stops it on the phone. |
 | **Find My Phone** | Rings the phone. Click **Stop Ringing Phone**, or tap **Stop** on the phone. |
 | **Share clipboard with phone** | Turns clipboard sync on or off in both directions. |
 | **Unpair** | Forgets the phone. Pair again with **Pair a phone…**. |
@@ -421,7 +438,8 @@ Quit and reopen PixelLink on the Mac. You don't need to pair again.
 PixelLink/
 ├── mac/                        macOS menu bar app (Swift, SwiftUI, Network.framework)
 │   ├── Sources/PixelLink/      AppModel, LinkServer (TLS + Bonjour), NotificationRelay,
-│   │                           CallController, MessagesStore, ExtrasController, views
+│   │                           CallController, MessagesStore, ExtrasController,
+│                           ScreenMirror (video decoding, touch input), views
 │   ├── Resources/              Info.plist, entitlements
 │   └── scripts/build-app.sh    builds and signs PixelLink.app
 ├── android/                    Android app (Kotlin, Jetpack Compose)
@@ -430,6 +448,7 @@ PixelLink/
 │       ├── notifications/      NotificationListenerService bridge
 │       ├── calls/  sms/  contacts/
 │       └── extras/             find my phone, media, clipboard, files, photos, share sheet
+│       └── mirror/             screen capture and encoder, phone control (Accessibility), app list
 ├── protocol/PROTOCOL.md        wire protocol between phone and Mac
 └── PLAN.md                     design, milestones and progress
 ```
@@ -477,7 +496,7 @@ adb -s emulator-5554 emu sms send 5551234 "Hello"
 | M3 | Calls: incoming panel, answer/decline, dialling, call log | ✅ |
 | M4 | SMS: conversations, read and send | ✅ |
 | M5 | Files, photos, clipboard, find my phone, media controls | ✅ |
-| M6 | Screen mirroring and single-app windows (via [scrcpy](https://github.com/Genymobile/scrcpy)) | 🚧 in progress |
+| M6 | Phone screen on the Mac: native capture, mouse and keyboard control, approve once | ✅ |
 | M7 | Camera: "Insert from Pixel" photo and document scan | Planned |
 | M8 | Polish: launch at login, onboarding, prebuilt releases | Planned |
 | 2.0 | Away-from-home connection, call audio experiments, wireless webcam | Ideas |
@@ -494,7 +513,6 @@ Pull requests should keep the existing code style and update `protocol/PROTOCOL.
 
 ## Acknowledgements
 
-- [scrcpy](https://github.com/Genymobile/scrcpy) by Genymobile (Apache 2.0), the basis for screen mirroring.
 - [KDE Connect](https://kdeconnect.kde.org/), whose approach to automatic clipboard reading on modern Android PixelLink follows.
 
 PixelLink is an independent project. It isn't affiliated with or endorsed by Google or Apple. Android and Pixel are trademarks of Google LLC; Mac, macOS and iPhone are trademarks of Apple Inc.

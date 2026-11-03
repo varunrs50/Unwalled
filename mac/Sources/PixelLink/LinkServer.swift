@@ -41,30 +41,14 @@ final class LinkServer {
     func setPinned(_ fingerprint: String?) { queue.async { self.pinnedFingerprint = fingerprint } }
     func setPairingOpen(_ open: Bool) { queue.async { self.pairingOpen = open } }
 
-    func start() throws {
-        let tls = NWProtocolTLS.Options()
-        let sec = tls.securityProtocolOptions
-        sec_protocol_options_set_local_identity(sec, sec_identity_create(identity.secIdentity)!)
-        sec_protocol_options_set_min_tls_protocol_version(sec, .TLSv13)
-        sec_protocol_options_set_peer_authentication_required(sec, true)
-        sec_protocol_options_set_verify_block(sec, { [weak self] _, trust, complete in
-            guard let self, let fp = Self.leafFingerprint(sec_trust_copy_ref(trust).takeRetainedValue()) else {
-                complete(false); return
-            }
-            // Runs on `queue`, so reading the guarded state is safe.
-            let allowed = fp == self.pinnedFingerprint || self.pairingOpen
-            if !allowed { Log.info("Rejected unknown device \(fp.prefix(16))") }
-            complete(allowed)
-        }, queue)
+    /// Screen mirroring video arrives on its own connection, three ports up (47823).
+    static var videoPort: NWEndpoint.Port { NWEndpoint.Port(rawValue: port.rawValue + 3)! }
+    private var videoListener: NWListener?
+    /// A pinned phone opened a video stream; delivered on the main queue, ready to read.
+    var onVideo: ((NWConnection) -> Void)?
 
-        let tcp = NWProtocolTCP.Options()
-        // TCP keepalive notices a vanished phone; the phone's network stack answers these probes
-        // without waking the app, unlike our own ping. Idle 2 min, then 3 probes 20 s apart.
-        tcp.enableKeepalive = true
-        tcp.keepaliveIdle = 120
-        tcp.keepaliveInterval = 20
-        tcp.keepaliveCount = 3
-        let params = NWParameters(tls: tls, tcp: tcp)
+    func start() throws {
+        let params = NWParameters(tls: tlsOptions(allowPairing: true), tcp: tcpOptions())
         params.allowLocalEndpointReuse = true
 
         let listener = try NWListener(using: params, on: Self.port)
@@ -76,6 +60,49 @@ final class LinkServer {
         listener.newConnectionHandler = { [weak self] nw in self?.accept(nw) }
         listener.start(queue: queue)
         self.listener = listener
+
+        // Only the paired phone may stream video; pairing never happens here.
+        let videoParams = NWParameters(tls: tlsOptions(allowPairing: false), tcp: NWProtocolTCP.Options())
+        videoParams.allowLocalEndpointReuse = true
+        let video = try NWListener(using: videoParams, on: Self.videoPort)
+        video.newConnectionHandler = { [weak self] nw in
+            nw.stateUpdateHandler = { state in
+                if case .ready = state { DispatchQueue.main.async { self?.onVideo?(nw) } }
+                if case .failed = state { nw.cancel() }
+            }
+            nw.start(queue: DispatchQueue(label: "app.pixellink.video"))
+        }
+        video.start(queue: queue)
+        videoListener = video
+    }
+
+    private func tlsOptions(allowPairing: Bool) -> NWProtocolTLS.Options {
+        let tls = NWProtocolTLS.Options()
+        let sec = tls.securityProtocolOptions
+        sec_protocol_options_set_local_identity(sec, sec_identity_create(identity.secIdentity)!)
+        sec_protocol_options_set_min_tls_protocol_version(sec, .TLSv13)
+        sec_protocol_options_set_peer_authentication_required(sec, true)
+        sec_protocol_options_set_verify_block(sec, { [weak self] _, trust, complete in
+            guard let self, let fp = Self.leafFingerprint(sec_trust_copy_ref(trust).takeRetainedValue()) else {
+                complete(false); return
+            }
+            // Runs on `queue`, so reading the guarded state is safe.
+            let allowed = fp == self.pinnedFingerprint || (allowPairing && self.pairingOpen)
+            if !allowed { Log.info("Rejected unknown device \(fp.prefix(16))") }
+            complete(allowed)
+        }, queue)
+        return tls
+    }
+
+    private func tcpOptions() -> NWProtocolTCP.Options {
+        let tcp = NWProtocolTCP.Options()
+        // TCP keepalive notices a vanished phone; the phone's network stack answers these probes
+        // without waking the app, unlike our own ping. Idle 2 min, then 3 probes 20 s apart.
+        tcp.enableKeepalive = true
+        tcp.keepaliveIdle = 120
+        tcp.keepaliveInterval = 20
+        tcp.keepaliveCount = 3
+        return tcp
     }
 
     private func accept(_ nw: NWConnection) {

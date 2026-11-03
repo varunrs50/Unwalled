@@ -9,7 +9,7 @@ struct PixelLinkApp: App {
         MenuBarExtra {
             MenuContent().environment(model)
         } label: {
-            Image(systemName: model.menuBarSymbol)
+            MenuBarIcon().environment(model)
         }
         .menuBarExtraStyle(.window)
 
@@ -29,6 +29,11 @@ struct PixelLinkApp: App {
         Window("Photos", id: "photos") {
             PhotosView().environment(model)
         }
+
+        Window("Apps", id: "apps") {
+            AppsView().environment(model)
+        }
+
     }
 
     init() {
@@ -85,6 +90,7 @@ struct MenuContent: View {
                 Button("Messages…") { open("messages") }
                 Button("Calls…") { open("calls") }
                 Button("Photos…") { open("photos") }
+                MirrorMenuSection()
                 Button("Send File to Phone…") { model.extras.chooseFilesToSend() }
                     .disabled(model.state != .connected)
                 Button(model.extras.ringing ? "Stop Ringing Phone" : "Find My Phone") { model.extras.toggleRing() }
@@ -140,6 +146,22 @@ struct MenuContent: View {
     private func showPairing() {
         model.startPairing()
         open("pairing")
+    }
+}
+
+/// The menu bar icon. It's always on screen, so it also lets AppKit windows open SwiftUI ones.
+struct MenuBarIcon: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Image(systemName: model.menuBarSymbol)
+            .onAppear {
+                model.screen.openApps = {
+                    openWindow(id: "apps")
+                    NSApp.activate()
+                }
+            }
     }
 }
 

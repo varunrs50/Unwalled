@@ -73,6 +73,7 @@ class LinkService : Service() {
     private lateinit var files: FileTransfer
     private lateinit var photos: PhotosBridge
     private lateinit var clipWatcher: app.pixellink.extras.ClipWatcher
+    private lateinit var appList: app.pixellink.mirror.AppList
     /** One outgoing file at a time, so chunks of different files never interleave. */
     private val sendLock = Mutex()
     @Volatile private var nudgeSocket: DatagramSocket? = null
@@ -89,6 +90,7 @@ class LinkService : Service() {
         files = FileTransfer(this)
         photos = PhotosBridge(this)
         clipWatcher = app.pixellink.extras.ClipWatcher(this)
+        appList = app.pixellink.mirror.AppList(this)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Connection to Mac", NotificationManager.IMPORTANCE_MIN)
         )
@@ -278,6 +280,7 @@ class LinkService : Service() {
             startCalls()
             calls.resend()
             media.resend()
+            app.pixellink.mirror.ScreenMirror.reportState()
 
             while (true) {
                 val frame = fs.receive()
@@ -322,6 +325,15 @@ class LinkService : Service() {
                     "file.cancel" -> files.cancel(frame.body.getString("id"))
                     "file.result" -> Log.i(TAG, "Mac ${if (frame.body.optBoolean("ok")) "saved" else "rejected"} file ${frame.body.optString("error")}")
                     "photos.request" -> fs.send("photos.list", photos.page(frame.body.optInt("limit", 60), frame.body.optInt("offset", 0), frame.body.optString("album", "")), frame.id)
+                    "screen.start" -> app.pixellink.mirror.ScreenMirror.requestStart(this@LinkService)
+                    "screen.stop" -> app.pixellink.mirror.ScreenMirror.pause()
+                    "screen.end" -> app.pixellink.mirror.ScreenMirror.end(this@LinkService)
+                    "screen.keyframe" -> app.pixellink.mirror.ScreenCaptureService.instance?.requestKeyFrame()
+                    "input.touch" -> app.pixellink.mirror.ControlService.instance?.touch(frame.body)
+                    "input.key" -> app.pixellink.mirror.ControlService.instance?.key(frame.body.optString("key"))
+                    "input.text" -> app.pixellink.mirror.ControlService.instance?.type(frame.body.optString("text"))
+                    "apps.request" -> fs.send("apps.list", appList.apps(), frame.id)
+                    "apps.launch" -> app.pixellink.mirror.ControlService.instance?.launch(frame.body.optString("package"))
                     "photos.get" -> frame.body.getLong("id").let { id -> sendFile(photos.uri(id), "photo-$id") }
                     else -> Unit
                 }
