@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- PixelLink's icon: a phone with a link badge; matches mac/scripts/make-icon.swift. -->
+<!-- Unwalled's icon: a phone with a link badge; matches mac/scripts/make-icon.swift. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"

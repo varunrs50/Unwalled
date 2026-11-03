@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>app.pixellink.mac</string>
+    <string>app.unwalled.mac</string>
     <key>CFBundleName</key>
-    <string>PixelLink</string>
+    <string>Unwalled</string>
     <key>CFBundleDisplayName</key>
-    <string>PixelLink</string>
+    <string>Unwalled</string>
     <key>CFBundleExecutable</key>
-    <string>PixelLink</string>
+    <string>Unwalled</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -23,7 +23,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>PixelLink connects to your paired phone on this Wi-Fi network.</string>
+    <string>Unwalled connects to your paired phone on this Wi-Fi network.</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
@@ -37,7 +37,7 @@
     </array>
     <key>NSBonjourServices</key>
     <array>
-        <string>_pixellink._tcp</string>
+        <string>_unwalled._tcp</string>
         <string>_adb-tls-connect._tcp</string>
     </array>
 </dict>

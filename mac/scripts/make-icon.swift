@@ -1,4 +1,4 @@
-// Draws PixelLink's app icon (a phone with a link badge on a blue tile) and writes
+// Draws Unwalled's app icon (a phone with a link badge on a blue tile) and writes
 // Resources/AppIcon.icns. Run from mac/: swift scripts/make-icon.swift
 // The geometry matches the Android adaptive icon (res/drawable/ic_launcher_foreground.xml).
 import AppKit

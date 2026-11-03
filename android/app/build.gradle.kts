@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "app.pixellink"
+    namespace = "app.unwalled"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.pixellink"
+        applicationId = "app.unwalled"
         minSdk = 34
         targetSdk = 37
         versionCode = 1
@@ -17,13 +17,13 @@ android {
 
     // Release builds are signed only when a key is supplied (scripts/release.sh does this);
     // without one, `assembleRelease` still builds an unsigned APK.
-    val releaseKey = System.getenv("PIXELLINK_KEYSTORE")?.let(::file)?.takeIf { it.exists() }
+    val releaseKey = System.getenv("UNWALLED_KEYSTORE")?.let(::file)?.takeIf { it.exists() }
     signingConfigs {
         if (releaseKey != null) create("release") {
             storeFile = releaseKey
-            storePassword = System.getenv("PIXELLINK_KEYSTORE_PASSWORD")
-            keyAlias = "pixellink"
-            keyPassword = System.getenv("PIXELLINK_KEYSTORE_PASSWORD")
+            storePassword = System.getenv("UNWALLED_KEYSTORE_PASSWORD")
+            keyAlias = "unwalled"
+            keyPassword = System.getenv("UNWALLED_KEYSTORE_PASSWORD")
         }
     }
 

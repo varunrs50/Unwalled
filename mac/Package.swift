@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "PixelLink",
+    name: "Unwalled",
     platforms: [.macOS(.v15)],
     targets: [
         .executableTarget(
-            name: "PixelLink",
-            path: "Sources/PixelLink",
+            name: "Unwalled",
+            path: "Sources/Unwalled",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

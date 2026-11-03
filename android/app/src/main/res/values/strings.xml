@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">PixelLink</string>
-    <string name="control_service_description">Lets you control this phone from your Mac while its screen is shown there: clicks become taps and swipes, and typing goes into the text field you\'re in. PixelLink only acts when you use the mirroring window on your Mac, and reads nothing else.</string>
+    <string name="app_name">Unwalled</string>
+    <string name="control_service_description">Lets you control this phone from your Mac while its screen is shown there: clicks become taps and swipes, and typing goes into the text field you\'re in. Unwalled only acts when you use the mirroring window on your Mac, and reads nothing else.</string>
 </resources>

@@ -46,12 +46,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Scanning the Mac's pairing code with the Camera app opens PixelLink. -->
+            <!-- Scanning the Mac's pairing code with the Camera app opens Unwalled. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="pixellink" android:host="pair" />
+                <data android:scheme="unwalled" android:host="pair" />
             </intent-filter>
         </activity>
 
@@ -132,7 +132,7 @@
         <service
             android:name=".mirror.ControlService"
             android:exported="true"
-            android:label="PixelLink phone control"
+            android:label="Unwalled phone control"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

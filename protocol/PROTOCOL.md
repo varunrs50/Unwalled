@@ -1,4 +1,4 @@
-# PixelLink protocol (v1)
+# Unwalled protocol (v1)
 
 How the phone app and the Mac app talk to each other. Both apps must follow this file exactly.
 
@@ -6,16 +6,16 @@ How the phone app and the Mac app talk to each other. Both apps must follow this
 
 - **TCP port 47820** on the Mac. The Mac listens; the phone connects.
 - **TLS 1.3 only, with both sides presenting certificates.** Each side has a long-term self-signed certificate (EC P-256). No certificate authority is involved. Instead, each side checks the other's certificate against a **pinned SHA-256 fingerprint** of the certificate's DER bytes, written as 64 lowercase hex characters.
-  - Mac: certificate stored as `~/Library/Application Support/PixelLink/identity.p12`.
-  - Phone: key in the Android Keystore under alias `pixellink-identity`. Android generates the self-signed certificate.
-- **Discovery.** The Mac advertises Bonjour service `_pixellink._tcp` with TXT record `fp=<first 16 hex chars of its fingerprint>`. The phone first tries the last known host, then searches Bonjour for a service whose `fp` matches its pinned Mac.
+  - Mac: certificate stored as `~/Library/Application Support/Unwalled/identity.p12`.
+  - Phone: key in the Android Keystore under alias `unwalled-identity`. Android generates the self-signed certificate.
+- **Discovery.** The Mac advertises Bonjour service `_unwalled._tcp` with TXT record `fp=<first 16 hex chars of its fingerprint>`. The phone first tries the last known host, then searches Bonjour for a service whose `fp` matches its pinned Mac.
 
 ## Wake-up nudge
 
 A sleeping phone (Android Doze) pauses its timers, so it may not notice that the Mac restarted or slept. To get it back quickly, the Mac sends a UDP datagram to the phone's last known address, **port 47822**:
 
 ```
-PLNUDGE1 <first 16 hex chars of the Mac's fingerprint>
+UWNUDGE1 <first 16 hex chars of the Mac's fingerprint>
 ```
 
 The Mac sends one when it starts, when it wakes from sleep, and every 60 s while the paired phone isn't connected. On a nudge whose fingerprint prefix matches its paired Mac, the phone drops its current connection, if it has one, and reconnects immediately. The nudge carries no secrets and grants nothing: the reconnect still goes through the full TLS pinning.
@@ -45,7 +45,7 @@ Unknown `type` values are ignored, so newer apps can talk to older ones.
 The Mac shows a QR code that encodes:
 
 ```
-pixellink://pair?v=1&name=<Mac name>&host=<IPv4>&port=47820&fp=<Mac fingerprint>&token=<random, 22 chars base64url>
+unwalled://pair?v=1&name=<Mac name>&host=<IPv4>&port=47820&fp=<Mac fingerprint>&token=<random, 22 chars base64url>
 ```
 
 1. The phone parses the QR code and asks the user to confirm "Pair with <name>?"
@@ -112,7 +112,7 @@ The phone sends `status.update` right after `hello.ack`, whenever battery or cha
 }
 ```
 
-Which notifications are forwarded: ones the user can swipe away, that make an alert (importance "default" or higher), and that aren't group summaries. Ongoing ones (music, navigation, PixelLink's own) are skipped.
+Which notifications are forwarded: ones the user can swipe away, that make an alert (importance "default" or higher), and that aren't group summaries. Ongoing ones (music, navigation, Unwalled's own) are skipped.
 
 On every new session the phone re-sends what's currently showing with `initial: true`, so the Mac's list matches the phone.
 
@@ -196,7 +196,7 @@ The phone sends `media.state` at session start and whenever the playing app, tra
 |---|---|---|
 | `clip.set` | both | `{text}`: put this text on the clipboard |
 
-Mac → phone happens automatically when the Mac's clipboard text changes. Phone → Mac happens when you tap PixelLink's Quick Settings tile or share text to "Send to Mac", because Android doesn't let background apps read the clipboard. Each side ignores a `clip.set` that matches what it just sent, so the two never loop.
+Mac → phone happens automatically when the Mac's clipboard text changes. Phone → Mac happens when you tap Unwalled's Quick Settings tile or share text to "Send to Mac", because Android doesn't let background apps read the clipboard. Each side ignores a `clip.set` that matches what it just sent, so the two never loop.
 
 ### Files (M5)
 
@@ -210,7 +210,7 @@ Either side can send a file. Contents travel as base64 in JSON chunks of 192 KiB
 | `file.result` | receiver → sender | `{id, ok, error?}` |
 | `file.cancel` | either | `{id}` |
 
-The sender sends chunks one after another as fast as the connection accepts them. The receiver writes them to a temporary file, checks the size and SHA-256, then moves the file into place: `~/Downloads` on the Mac (renamed if the name is taken), `Downloads/PixelLink` on the phone.
+The sender sends chunks one after another as fast as the connection accepts them. The receiver writes them to a temporary file, checks the size and SHA-256, then moves the file into place: `~/Downloads` on the Mac (renamed if the name is taken), `Downloads/Unwalled` on the phone.
 
 ### Photos (M5)
 
@@ -242,7 +242,7 @@ Session: Android requires the user to approve each capture session. Once approve
 
 Video packets: `u32` big-endian length, then `u8` kind, `u64` presentation time in µs, payload. Kinds: `0` JSON `{width, height}` (sent first and after every resize, e.g. rotation), `1` codec config (SPS/PPS, Annex-B), `2` key frame, `3` frame (Annex-B). A still screen sends no frames. The long side is at most 1600 px; 6 Mbit/s, up to 60 fps.
 
-### Insert from Pixel (M7)
+### Insert from Phone (M7)
 
 | Type | Direction | Body |
 |---|---|---|

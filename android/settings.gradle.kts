@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "PixelLink"
+rootProject.name = "Unwalled"
 include(":app")
