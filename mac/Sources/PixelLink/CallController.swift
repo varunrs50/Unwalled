@@ -140,6 +140,14 @@ final class CallController {
         Log.info("Dialling \(cleaned)")
     }
 
+    /// Forgets the cached call history and contacts; they're fetched again from the phone.
+    func clearCache() {
+        log = []
+        contacts = []
+        try? FileManager.default.removeItem(at: logFile)
+        try? FileManager.default.removeItem(at: contactsFile)
+    }
+
     func refresh() {
         send?("calllog.request", ["limit": 200])
         send?("contacts.request", [:])

@@ -10,3 +10,4 @@ mac/.build/
 mac/build/
 *.xcuserstate
 xcuserdata/
+dist/

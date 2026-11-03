@@ -193,6 +193,24 @@ final class AppModel {
         notifications.removeAll { $0.id == notification.id }
     }
 
+    /// Deletes what this Mac keeps from the phone (messages, calls, contacts, app icons, captured
+    /// photos); it's fetched again from the phone if connected.
+    func clearHistory() {
+        messages.clearCache()
+        calls.clearCache()
+        notifications = []
+        relay.removeAll()
+        for dir in ["icons", "Captures"] {
+            try? FileManager.default.removeItem(at: AppPaths.support.appendingPathComponent(dir, isDirectory: true))
+        }
+        try? FileManager.default.createDirectory(at: AppPaths.support.appendingPathComponent("icons", isDirectory: true), withIntermediateDirectories: true)
+        if state == .connected {
+            calls.refresh()
+            messages.refresh()
+        }
+        Log.info("Cleared history")
+    }
+
     private func forget() {
         notifications = []
         relay.removeAll()

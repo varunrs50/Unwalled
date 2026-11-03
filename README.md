@@ -14,6 +14,7 @@ Calls, text messages, notifications, files, photos, clipboard and media controls
 - [What it can't do (yet)](#what-it-cant-do-yet)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
+- [Quick install (downloads)](#quick-install-downloads)
 - [Setup, step by step](#setup-step-by-step)
   - [Step 1: Install the build tools on your Mac](#step-1-install-the-build-tools-on-your-mac)
   - [Step 2: Get the code](#step-2-get-the-code)
@@ -97,9 +98,28 @@ PixelLink is built for Pixel phones and tested on one, but any Android 14+ phone
 
 ---
 
+## Quick install (downloads)
+
+The easiest way: download both apps from the [latest release](../../releases/latest). No developer tools needed.
+
+**On the Mac** (Apple Silicon, macOS 15 or later):
+
+1. Download **PixelLink-⟨version⟩-mac.zip**, open it, and drag **PixelLink** into **Applications**.
+2. Open PixelLink. PixelLink isn't notarized by Apple yet, so the first time macOS says it can't be checked: open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to PixelLink.
+3. Allow notifications and local network access when asked. The **Pair Phone** window opens with a QR code.
+
+**On the phone** (Android 14 or later):
+
+1. Download **PixelLink-⟨version⟩.apk** on the phone and open it. Allow your browser or Files app to install apps when asked.
+2. Open PixelLink, allow local network access and notifications, and tap **Scan pairing code**. You can also scan the Mac's QR code with the normal **Camera** app; it opens PixelLink.
+3. Tap **Pair**, then **Allow** on the Mac.
+4. Work through the **Set up** checklist in the app (see [step 8](#step-8-grant-the-phone-permissions) for what each item does).
+
+The optional extras in steps 9 and 10 need a one-time command over adb; for the downloaded app the package name is `app.pixellink` (without `.debug`).
+
 ## Setup, step by step
 
-There are no prebuilt downloads yet, so you build both apps from source. It takes about 15 minutes the first time.
+To build both apps from source instead, follow these steps. It takes about 15 minutes the first time.
 
 ### Step 1: Install the build tools on your Mac
 
@@ -245,10 +265,10 @@ The first build downloads Gradle and the libraries, which takes a few minutes. W
 
 ### Step 7: Pair the phone with the Mac
 
-1. On the **Mac**, click the PixelLink menu bar icon, then **Pair a phone…**. A window shows a QR code.
+1. On the **Mac**, the **Pair Phone** window opens by itself the first time (otherwise click the PixelLink menu bar icon, then **Pair a phone…**). It shows a QR code.
 2. On the **phone**, open **PixelLink**.
    - Tap **Allow** for local network access, and **Allow** for notifications.
-   - Tap **Scan pairing code** and point the camera at the QR code on the Mac.
+   - Tap **Scan pairing code** and point the camera at the QR code on the Mac, or scan it with the normal **Camera** app, which opens PixelLink.
    - No camera handy? Click **Copy code** on the Mac, get the text to the phone some other way, and paste it into the box.
 3. The phone asks **"Pair with ⟨your Mac⟩?"**. Tap **Pair**.
 4. The Mac asks **"Allow ⟨your phone⟩ to connect?"**. Click **Allow**.
@@ -257,17 +277,17 @@ The menu bar now shows your phone's name, battery and signal. Pairing is done on
 
 ### Step 8: Grant the phone permissions
 
-The PixelLink app on the phone shows a card for each feature that still needs a permission. Grant the ones you want:
+The PixelLink app on the phone shows a **Set up** checklist: a tick for each part that's done, and a button for each that isn't. Grant the ones you want:
 
-| Card | What to do | Turns on |
+| Item | What to do | Turns on |
 |---|---|---|
-| **Allow notification access** | Opens a settings screen. Find **PixelLink**, switch it on, and confirm. | Notifications on the Mac, replies, now playing |
-| **Allow calls** | Allow the phone, call log and contacts prompts | Incoming calls, call history, dialling from the Mac |
-| **Allow messages** | Allow the SMS prompt | Messages window |
-| **Allow photos** | Choose **Allow all** | Photos window |
-| **Allow** (background) | Allow PixelLink to run in the background | Keeps the connection alive when the phone is idle |
-| **Add Copy to Mac tile** | Tap **Add tile** | One-tap phone → Mac clipboard from Quick Settings |
-| **Turn on phone control** | In Accessibility, tap **PixelLink phone control** and switch it on. If Android says it's a *restricted setting*: **Settings → Apps → PixelLink → ⋮ → Allow restricted settings**, then try again. | Controlling the phone from its screen window on the Mac |
+| **Notifications** | Opens a settings screen. Find **PixelLink**, switch it on, and confirm. | Notifications on the Mac, replies, now playing |
+| **Calls** | Allow the phone, call log and contacts prompts | Incoming calls, call history, dialling from the Mac |
+| **Messages** | Allow the SMS prompt | Messages window |
+| **Photos** | Choose **Allow all** | Photos window |
+| **Run in the background** | Allow PixelLink to run in the background | Keeps the connection alive when the phone is idle |
+| **Copy to Mac tile** (optional) | Tap **Add tile** | One-tap phone → Mac clipboard from Quick Settings |
+| **Phone control** | In Accessibility, tap **PixelLink phone control** and switch it on. If Android says it's a *restricted setting*: **Settings → Apps → PixelLink → ⋮ → Allow restricted settings**, then try again. | Controlling the phone from its screen window on the Mac, and opening the camera for Insert from Pixel |
 
 > **Important:** don't skip the background (battery) permission. Without it Android may cut the connection after a while.
 
@@ -308,7 +328,7 @@ It lasts until PixelLink is uninstalled; Wireless debugging can be switched off 
 
 ### Step 11 (optional): Start PixelLink at login
 
-On the Mac: **System Settings → General → Login Items & Extensions → Open at Login → +**, then choose **PixelLink**. The phone app starts on its own after the phone reboots.
+In the PixelLink menu, choose **Settings…** (⌘,) and turn on **Open PixelLink when you log in**. The phone app starts on its own after the phone reboots.
 
 ---
 
@@ -325,8 +345,7 @@ On the Mac: **System Settings → General → Login Items & Extensions → Open 
 | **Phone Screen** | Opens the phone's screen in a window. The first time, tap **Start** on the phone. Click to tap, drag or scroll to swipe, hold for a long press, right-click or Esc for Back, and type into the field you're in (⌘V types the Mac clipboard). The toolbar has Back, Home, Recents, Notifications and **Apps**. Closing the window pauses sharing; **End** in the menu stops it on the phone. |
 | **Take Photo with Phone** / **Scan Documents with Phone** | Opens the camera or Google's document scanner on the phone. Take the shot and it's pasted where your cursor was on the Mac. Photos work with the phone locked; scans ask you to unlock. Several scanned pages arrive as one PDF. The first time, macOS asks to let PixelLink use **Accessibility** so it can paste for you; without it the result is put on the clipboard for you to press ⌘V. |
 | **Find My Phone** | Rings the phone. Click **Stop Ringing Phone**, or tap **Stop** on the phone. |
-| **Share clipboard with phone** | Turns clipboard sync on or off in both directions. |
-| **Unpair** | Forgets the phone. Pair again with **Pair a phone…**. |
+| **Settings…** | Open at login, clipboard sharing, clear the history this Mac keeps from your phone, and unpair. |
 
 **Calls.** When the phone rings, a panel appears at the top right of the screen: **Answer**, **Decline**, or **Silence** to stop the ringing only. After answering, talk on the phone or a connected headset.
 
@@ -386,7 +405,7 @@ PixelLink needs **Allow all** photo access. If you chose "Select photos", change
 
 - Without step 9, you need to tap **Copy to Mac** (Quick Settings tile or the notification button) **after** copying.
 - With step 9, open PixelLink on the phone after a restart and tap **Allow** on the log-access prompt.
-- Make sure **Share clipboard with phone** is ticked in the Mac menu.
+- Make sure **Share clipboard with phone** is on in **Settings…** on the Mac.
 
 </details>
 
@@ -413,7 +432,7 @@ QR scanning uses Google Play services. Update Google Play services, or click **C
 - **Nothing leaves your network.** There's no PixelLink server, no account, no analytics and no tracking. The phone talks only to the Mac it was paired with.
 - **Encrypted and authenticated.** Every connection uses mutual TLS 1.3. The Mac and phone each have their own key: the phone's lives in the Android Keystore, the Mac's in PixelLink's app data. Each side pins the other's certificate fingerprint from pairing. Another device on your Wi-Fi can't connect or listen in.
 - **Pairing needs both sides.** You confirm on the phone *and* on the Mac. Pairing codes expire after a few minutes.
-- **Stored locally.** The Mac keeps caches of the message list, call log and contacts in `~/Library/Application Support/PixelLink/` so its windows open instantly. **Unpair** deletes the pairing; deleting that folder removes everything.
+- **Stored locally.** The Mac keeps caches of the message list, call log and contacts in `~/Library/Application Support/PixelLink/` so its windows open instantly. **Settings… → Clear History** deletes those caches, **Unpair** deletes the pairing, and deleting that folder removes everything.
 - **Password managers.** Clipboard text that password managers mark as concealed is never sent to the phone.
 - **Permissions are yours to grant.** Each feature has its own permission, and you can revoke any of them in Android settings at any time.
 
@@ -488,6 +507,10 @@ adb -s emulator-5554 emu gsm call 5551234
 adb -s emulator-5554 emu sms send 5551234 "Hello"
 ```
 
+**Making a release.** `scripts/release.sh` builds the signed APK, the Mac zip and checksums into `dist/<version>`; `scripts/release.sh --publish` also creates a draft GitHub release to review and publish. Bump `versionName`/`versionCode` in `android/app/build.gradle.kts` and `CFBundleShortVersionString`/`CFBundleVersion` in `mac/Resources/Info.plist` together first. The Android signing key must stay the same for every release.
+
+**App icon.** `cd mac && swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`; the Android version is `res/drawable/ic_launcher_foreground.xml`.
+
 **Protocol.** Every message is a 4-byte big-endian length followed by a JSON envelope `{v, id, type, ts, body}`. All message types are documented in [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md). Keep it up to date when you add one.
 
 ## Roadmap
@@ -502,7 +525,7 @@ adb -s emulator-5554 emu sms send 5551234 "Hello"
 | M5 | Files, photos, clipboard, find my phone, media controls | ✅ |
 | M6 | Phone screen on the Mac: native capture, mouse and keyboard control, approve once | ✅ |
 | M7 | Insert from Pixel: photo and document scan pasted into the Mac app you're in | ✅ |
-| M8 | Polish: launch at login, onboarding, prebuilt releases | Planned |
+| M8 | Polish: settings, launch at login, setup checklist, app icon, prebuilt releases | ✅ |
 | 2.0 | Away-from-home connection, call audio experiments, wireless webcam | Ideas |
 
 ## Contributing

@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
             if (LinkState.status.value == LinkStatus.NotPaired) LinkState.status.value = LinkStatus.Searching(mac.name)
         }
         requestMissingPermissions()
-        debugPayload(intent)?.let { pendingPayload.value = it }
+        pairingLink(intent)?.let { pendingPayload.value = it }
 
         setContent {
             PixelLinkTheme {
@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        debugPayload(intent)?.let { pendingPayload.value = it }
+        pairingLink(intent)?.let { pendingPayload.value = it }
         if (BuildConfig.DEBUG && intent.getBooleanExtra("testNotification", false)) {
             TestNotifications.post(this, intent.getStringExtra("testText") ?: "Hi! This is a PixelLink test message.")
         }
@@ -118,8 +118,13 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Debug builds accept a pairing code from adb for testing; release builds never do. */
-    private fun debugPayload(intent: Intent?): String? =
-        if (BuildConfig.DEBUG) intent?.getStringExtra("pairPayload") else null
+    /**
+     * A `pixellink://pair?…` link, e.g. from scanning the Mac's code with the Camera app. It still
+     * goes through the "Pair with…?" confirmation here and on the Mac.
+     */
+    private fun pairingLink(intent: Intent?): String? =
+        intent?.data?.takeIf { it.scheme == "pixellink" && it.host == "pair" }?.toString()
+            ?: if (BuildConfig.DEBUG) intent?.getStringExtra("pairPayload") else null
 
     private fun scan() {
         val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
@@ -246,104 +251,58 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
         SmsBridge.PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     }
 
+    val controlOn = remember(resumeTick) { app.pixellink.mirror.ControlService.isEnabled(context) }
+    val clipTileAdded = remember(resumeTick) { context.getSharedPreferences("ui", Context.MODE_PRIVATE).getBoolean("clipTile", false) }
+    val autoClip = remember(resumeTick) { ClipWatcher.canRun(context) }
+    val activity = context as? android.app.Activity
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(macName, style = MaterialTheme.typography.titleMedium)
             Text(if (connected) "Connected" else "Looking for your Mac on this Wi-Fi…")
-            if (notificationsEnabled) Text("Notifications are shown on your Mac", style = MaterialTheme.typography.bodySmall)
-            if (callsAllowed) Text("Calls are shown on your Mac", style = MaterialTheme.typography.bodySmall)
-            if (smsAllowed) Text("Text messages are on your Mac", style = MaterialTheme.typography.bodySmall)
         }
     }
 
-    if (!notificationsEnabled) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Show this phone's notifications on your Mac, and reply to them from there.")
-                Button(onClick = { context.startActivity(NotificationBridge.settingsIntent(context)) }) {
-                    Text("Allow notification access")
-                }
-            }
-        }
-    }
+    val required = listOf(
+        SetupItem("Notifications", "Show this phone's notifications on your Mac and reply from there.", notificationsEnabled, "Allow notification access") {
+            context.startActivity(NotificationBridge.settingsIntent(context))
+        },
+        SetupItem("Calls", "See who's calling, answer or decline, and call from the Mac. Call audio stays on the phone.", callsAllowed, "Allow calls") {
+            onRequestPermissionsFor(CallBridge.PERMISSIONS)
+        },
+        SetupItem("Messages", "Read and send texts from the Mac. They're sent from this phone's SIM.", smsAllowed, "Allow messages") {
+            onRequestPermissionsFor(SmsBridge.PERMISSIONS)
+        },
+        SetupItem("Photos", "Browse this phone's photos on the Mac. Choose Allow all.", photosAllowed, "Allow photos") {
+            onRequestPermissionsFor(PhotosBridge.PERMISSIONS)
+        },
+        SetupItem("Run in the background", "So Android doesn't cut the connection while the phone is idle.", ignoringBattery, "Allow") {
+            context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
+        },
+        SetupItem("Phone control", "Use your Mac's mouse and keyboard on this phone's screen, and open the camera from the Mac. " +
+            "In the list that opens, tap PixelLink phone control and switch it on. If Android says it's a restricted setting: " +
+            "Settings → Apps → PixelLink → ⋮ → Allow restricted settings, then try again.", controlOn, "Turn on phone control") {
+            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        },
+    )
+    val optional = listOf(
+        SetupItem("Copy to Mac tile", "Send what you've copied to the Mac with one tap from Quick Settings.", clipTileAdded, "Add tile") {
+            activity?.let(::requestClipTile)
+        },
+        SetupItem("Automatic clipboard", "Send what you copy to the Mac without tapping anything. Needs a one-time command from the Mac " +
+            "(see the README, step 9)" + if (ClipWatcher.hasOverlay(context)) "." else ", and display over other apps.",
+            autoClip, if (ClipWatcher.hasOverlay(context)) null else "Allow display over other apps") {
+            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+        },
+    )
+    val done = required.count { it.done }
 
-    if (!callsAllowed) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("See who's calling on your Mac, answer or decline from there, and call contacts from the Mac. Call audio stays on the phone.")
-                Button(onClick = { onRequestPermissionsFor(CallBridge.PERMISSIONS) }) { Text("Allow calls") }
-            }
-        }
-    }
-
-    if (!smsAllowed) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Read and send your text messages from the Mac. Texts are sent from this phone's SIM.")
-                Button(onClick = { onRequestPermissionsFor(SmsBridge.PERMISSIONS) }) { Text("Allow messages") }
-            }
-        }
-    }
-
-    if (!photosAllowed) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Browse this phone's recent photos on the Mac and download them there.")
-                Button(onClick = { onRequestPermissionsFor(PhotosBridge.PERMISSIONS) }) { Text("Allow photos") }
-            }
-        }
-    }
-
-    if (!ignoringBattery) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Allow PixelLink to run in the background so Android doesn't cut the connection.")
-                Button(onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
-                    )
-                }) { Text("Allow") }
-            }
-        }
-    }
-
-    val controlOn = remember(resumeTick) { app.pixellink.mirror.ControlService.isEnabled(context) }
-    if (!controlOn) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Control this phone with your Mac's mouse and keyboard while its screen is shown on the Mac.")
-                Text("In the list that opens, tap PixelLink phone control and switch it on. If Android says it's a restricted setting, open Settings → Apps → PixelLink, tap ⋮ and choose Allow restricted settings, then try again.",
-                    style = MaterialTheme.typography.bodySmall)
-                Button(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Turn on phone control") }
-            }
-        }
-    }
-
-    val autoClip = remember(resumeTick) { ClipWatcher.canRun(context) }
-    if (!autoClip) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Send what you copy on this phone to the Mac automatically.")
-                if (!ClipWatcher.hasLogAccess(context)) {
-                    Text("Needs a one-time setup from the Mac over adb: pm grant ${context.packageName} android.permission.READ_LOGS",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                if (!ClipWatcher.hasOverlay(context)) {
-                    Button(onClick = {
-                        context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
-                    }) { Text("Allow display over other apps") }
-                }
-            }
-        }
-    }
-
-    val clipTileAdded = remember(resumeTick) { context.getSharedPreferences("ui", Context.MODE_PRIVATE).getBoolean("clipTile", false) }
-    if (!clipTileAdded) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Send what you've copied on this phone to the Mac with one tap from Quick Settings. You can also use \"Copy to Mac\" on PixelLink's notification.")
-                Button(onClick = { (context as? android.app.Activity)?.let(::requestClipTile) }) { Text("Add Copy to Mac tile") }
-            }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(if (done == required.size) "All set" else "Set up: $done of ${required.size} done", style = MaterialTheme.typography.titleMedium)
+            required.forEach { SetupRow(it) }
+            Text("Optional", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            optional.forEach { SetupRow(it) }
         }
     }
 
@@ -351,5 +310,23 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
 
     if (BuildConfig.DEBUG) {
         OutlinedButton(onClick = { TestNotifications.post(context) }) { Text("Send test notification") }
+    }
+}
+
+private class SetupItem(val title: String, val detail: String, val done: Boolean, val action: String?, val onAction: () -> Unit)
+
+/** One line of the setup checklist: a tick when done, otherwise what it's for and a button. */
+@Composable
+private fun SetupRow(item: SetupItem) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(if (item.done) "✓" else "○", style = MaterialTheme.typography.titleMedium,
+            color = if (item.done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(item.title, style = MaterialTheme.typography.bodyLarge)
+            if (!item.done) {
+                Text(item.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                item.action?.let { Button(onClick = item.onAction) { Text(it) } }
+            }
+        }
     }
 }

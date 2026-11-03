@@ -15,9 +15,27 @@ android {
         versionName = "0.1.0"
     }
 
+    // Release builds are signed only when a key is supplied (scripts/release.sh does this);
+    // without one, `assembleRelease` still builds an unsigned APK.
+    val releaseKey = System.getenv("PIXELLINK_KEYSTORE")?.let(::file)?.takeIf { it.exists() }
+    signingConfigs {
+        if (releaseKey != null) create("release") {
+            storeFile = releaseKey
+            storePassword = System.getenv("PIXELLINK_KEYSTORE_PASSWORD")
+            keyAlias = "pixellink"
+            keyPassword = System.getenv("PIXELLINK_KEYSTORE_PASSWORD")
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+        }
+        release {
+            signingConfig = signingConfigs.findByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
 

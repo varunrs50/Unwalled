@@ -34,6 +34,10 @@ struct PixelLinkApp: App {
             AppsView().environment(model)
         }
 
+        Settings {
+            SettingsView().environment(model)
+        }
+
     }
 
     init() {
@@ -96,15 +100,13 @@ struct MenuContent: View {
                     .disabled(model.state != .connected)
                 Button(model.extras.ringing ? "Stop Ringing Phone" : "Find My Phone") { model.extras.toggleRing() }
                     .disabled(model.state != .connected)
-                Toggle("Share clipboard with phone", isOn: Bindable(model.extras).clipboardSync)
-                    .toggleStyle(.checkbox)
             }
 
             Divider()
 
-            if model.paired != nil {
-                Button("Unpair \(model.paired?.name ?? "phone")") { model.unpair() }
-            }
+            SettingsLink { Text("Settings…") }
+                .keyboardShortcut(",")
+                .simultaneousGesture(TapGesture().onEnded { NSApp.activate() })
             Button("Quit PixelLink") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
         }
@@ -158,6 +160,21 @@ struct MenuBarIcon: View {
     var body: some View {
         Image(systemName: model.menuBarSymbol)
             .onAppear {
+                // First launch: there's nothing to do until a phone is paired, so start there.
+                if model.paired == nil {
+                    model.startPairing()
+                    openWindow(id: "pairing")
+                    // At launch the window is created before PixelLink is active; bring it forward once it exists.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NSApp.activate()
+                        let window = NSApp.windows.first { $0.title == "Pair Phone" }
+                        // Come to the space the user is on, even over a full-screen app.
+                        window?.collectionBehavior.insert([.moveToActiveSpace, .fullScreenAuxiliary])
+                        window?.orderFrontRegardless()
+                        window?.makeKey()
+                        Log.info("First launch: pairing window \(window == nil ? "not found" : "shown")")
+                    }
+                }
                 model.screen.openApps = {
                     openWindow(id: "apps")
                     NSApp.activate()

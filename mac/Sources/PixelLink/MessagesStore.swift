@@ -53,6 +53,14 @@ final class MessagesStore {
         }
     }
 
+    /// Forgets the cached conversations; they're fetched again from the phone.
+    func clearCache() {
+        threads = []
+        messages = [:]
+        pending = [:]
+        try? FileManager.default.removeItem(at: file)
+    }
+
     // MARK: To the phone
 
     func refresh() {
