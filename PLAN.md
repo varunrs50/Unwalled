@@ -161,6 +161,7 @@ Each milestone ends with something running on your Pixel and Mac that you can tr
 | **M6** | Screen mirroring | Phone window with mouse and keyboard control from the Mac, native (no developer options), approved once. |
 | **M7** | Camera | Insert from Pixel (photo and scan) works in Notes, Mail and Finder; USB webcam mode documented in onboarding. |
 | **M8** | Polish & hardening | Onboarding checklist, settings, launch at login, unpair, clear history; battery drain under 3 %/day from the app. |
+| **M9** | Compatibility (Android 14+, any manufacturer) | Works on Samsung (One UI) and Xiaomi (HyperOS) as well as Pixel: setup checklist detects the manufacturer and opens its battery / autostart setting; "restricted settings" help for notification access and phone control; mirroring checks the phone's encoder and falls back to a supported size; pairing and photos work without Google services (Camera-app link, paste code; scan hidden); SIM choice for texts on dual-SIM phones; "Send diagnostics" exports PixelLink's log with an issue template. Tested on a Samsung on Android 15, the emulator for Android 14–17, and Samsung Remote Test Lab. |
 
 M1 has to be solid before anything else. A flaky connection would make every later feature feel broken.
 
