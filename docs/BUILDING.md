@@ -144,6 +144,8 @@ adb -s emulator-5554 emu sms send 5551234 "Hello"
 2. Run `scripts/release.sh`. It builds the signed APK, the Mac zip and checksums into `dist/<version>`.
 3. Run `scripts/release.sh --publish` to also create a **draft** GitHub release, then review and publish it on GitHub.
 
+The release files keep the same names every time (`Unwalled-mac.zip`, `Unwalled.dmg`, `Unwalled.apk`, `SHA256SUMS.txt`), so `releases/latest/download/<name>` always gets the newest; the one-line installer (`scripts/install.sh`) and the Mac's "Get the phone app" code rely on that. To test the installer before a release, point it at local files: `UNWALLED_BASE=file://<folder> UNWALLED_INSTALL_DIR=<folder> UNWALLED_NO_OPEN=1 bash scripts/install.sh`.
+
 The Android signing key (`~/.unwalled/release.jks`, password in the macOS Keychain) must stay the same for every release; otherwise phones can't update.
 
 **App icon:** `cd mac && swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`; the Android version is `res/drawable/ic_launcher_foreground.xml`.

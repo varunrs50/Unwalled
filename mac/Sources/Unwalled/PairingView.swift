@@ -39,29 +39,59 @@ private struct CodeView: View {
     @Environment(AppModel.self) private var model
     let payload: String
     let expires: Date
+    /// Shows a code that downloads the phone app instead, for phones that don't have it yet.
+    @State private var showDownload = false
+
+    /// Always the newest release's APK; release assets keep the same name every version.
+    static let phoneAppURL = "https://github.com/varunrs50/Unwalled/releases/latest/download/Unwalled.apk"
 
     var body: some View {
-        Text("Pair your phone").font(.title2.bold())
-        Text("Open Unwalled on your phone, tap **Scan pairing code**, and point it at this code.")
-            .multilineTextAlignment(.center)
-            .foregroundStyle(.secondary)
-        if let image = qrImage(payload) {
+        Picker("", selection: $showDownload) {
+            Text("Pair").tag(false)
+            Text("Get the phone app").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+
+        if showDownload {
+            Text("Get Unwalled for Android").font(.title2.bold())
+            Text("Scan this with your phone's **Camera** to download Unwalled, then open the download to install it. Come back to **Pair** when it's installed.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            qrCode(Self.phoneAppURL)
+            Text("Needs Android 14 or later.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Pair") { showDownload = false }
+        } else {
+            Text("Pair your phone").font(.title2.bold())
+            Text("Open Unwalled on your phone, tap **Scan pairing code**, and point it at this code.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            qrCode(payload)
+            Text("Code expires \(expires, style: .relative)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Copy code") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(payload, forType: .string)
+                }
+                Button("Cancel") { model.cancelPairing() }
+            }
+        }
+    }
+
+    @ViewBuilder private func qrCode(_ text: String) -> some View {
+        if let image = qrImage(text) {
             Image(nsImage: image)
                 .interpolation(.none)
                 .resizable()
                 .frame(width: 220, height: 220)
                 .padding(10)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12))
-        }
-        Text("Code expires \(expires, style: .relative)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        HStack {
-            Button("Copy code") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(payload, forType: .string)
-            }
-            Button("Cancel") { model.cancelPairing() }
         }
     }
 

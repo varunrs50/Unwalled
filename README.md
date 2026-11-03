@@ -55,24 +55,37 @@ Calls, texts, notifications, files, photos, clipboard and music controls from yo
 
 ### On the Mac
 
-1. Download **Unwalled-⟨version⟩-mac.zip** from the [latest release](../../releases/latest).
-2. Open the zip and drag **Unwalled** into your **Applications** folder.
-3. Open Unwalled. Because it isn't notarized by Apple yet, macOS stops it the first time:
-   - Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to Unwalled.
-4. When asked, **allow notifications** and **allow finding devices on your local network**.
+Open **Terminal** (in Applications → Utilities), paste this line and press Return:
 
-Unwalled lives in the menu bar (there's no Dock icon), and the **Pair Phone** window opens with a QR code.
+```bash
+curl -fsSL https://raw.githubusercontent.com/varunrs50/Unwalled/main/scripts/install.sh | bash
+```
+
+It checks your Mac, downloads the latest Unwalled, verifies it, puts it in **Applications** and opens it. Run the same line again any time to update. When Unwalled opens, **allow notifications** and **allow finding devices on your local network**.
+
+<details>
+<summary>Prefer to download it yourself?</summary>
+
+1. Download **Unwalled.dmg** from the [latest release](../../releases/latest), open it, and drag **Unwalled** into **Applications**.
+2. Open Unwalled. Because it isn't notarized by Apple yet, macOS stops it the first time: open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to Unwalled.
+
+</details>
+
+Unwalled lives in the menu bar (there's no Dock icon), and the **Pair Phone** window opens.
 
 ### On the phone
 
-1. On the phone, download **Unwalled-⟨version⟩.apk** from the [latest release](../../releases/latest).
-2. Open it and tap **Install**. If asked, allow your browser or Files app to install apps.
+1. In the Mac's **Pair Phone** window, click **Get the phone app**.
+2. Scan the code with your phone's **Camera** and open the link. It downloads **Unwalled.apk**.
+3. Open the download and tap **Install**. If asked, allow your browser or Files app to install apps.
+
+You can also download [**Unwalled.apk**](../../releases/latest/download/Unwalled.apk) on the phone directly.
 
 ## Set up
 
 ### 1. Pair the phone with the Mac
 
-1. Open **Unwalled** on the phone. Allow **local network** access and **notifications**.
+1. Back on the Mac, click **Pair** in the Pair Phone window. Open **Unwalled** on the phone and allow **local network** access and **notifications**.
 2. Tap **Scan pairing code** and point it at the QR code on the Mac. Scanning with your normal **Camera** app works too.
 3. The phone asks **"Pair with ⟨your Mac⟩?"**: tap **Pair**. The Mac asks **"Allow ⟨your phone⟩ to connect?"**: click **Allow**.
 
@@ -237,7 +250,7 @@ Scan the Mac's QR code with the phone's normal Camera app instead, or click **Co
 
 ## Updating and uninstalling
 
-**To update,** download the new versions from the [latest release](../../releases/latest). On the Mac, quit Unwalled and replace the app in Applications. On the phone, open the new APK and tap **Update**. You don't need to pair again.
+**To update,** run the install line in Terminal again; it replaces the old version and keeps your pairing. On the phone, download the new [Unwalled.apk](../../releases/latest/download/Unwalled.apk) and tap **Update**. You don't need to pair again.
 
 **To uninstall:**
 

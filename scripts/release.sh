@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Builds Unwalled's release downloads into dist/<version>: the signed Android APK, the Mac app
-# as a zip, and SHA256SUMS.txt. With --publish, also creates a *draft* GitHub release with them,
+# as a zip (used by scripts/install.sh) and a disk image, and SHA256SUMS.txt. The files keep the
+# same names in every release, so .../releases/latest/download/<name> always points at the newest. With --publish, also creates a *draft* GitHub release with them,
 # to review and publish on GitHub.
 #
 # The Android signing key defaults to ~/.unwalled/release.jks with its password in the macOS
@@ -24,13 +25,20 @@ mkdir -p "$DIST"
 
 echo "Building Android $VERSION…"
 (cd android && ./gradlew assembleRelease -q)
-cp android/app/build/outputs/apk/release/app-release.apk "$DIST/Unwalled-$VERSION.apk"
+cp android/app/build/outputs/apk/release/app-release.apk "$DIST/Unwalled.apk"
 
 echo "Building Mac $VERSION…"
 mac/scripts/build-app.sh release
-ditto -c -k --keepParent mac/build/Unwalled.app "$DIST/Unwalled-$VERSION-mac.zip"
+ditto -c -k --keepParent mac/build/Unwalled.app "$DIST/Unwalled-mac.zip"
 
-(cd "$DIST" && shasum -a 256 Unwalled-* > SHA256SUMS.txt)
+# Disk image with an Applications shortcut to drag the app onto.
+STAGE=$(mktemp -d)
+cp -R mac/build/Unwalled.app "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+hdiutil create -quiet -volname "Unwalled $VERSION" -srcfolder "$STAGE" -format UDZO -ov "$DIST/Unwalled.dmg"
+rm -rf "$STAGE"
+
+(cd "$DIST" && shasum -a 256 Unwalled* > SHA256SUMS.txt)
 echo "Built:"
 ls -lh "$DIST"
 
@@ -39,11 +47,15 @@ if [[ "${1:-}" == "--publish" ]]; then
     cat > "$NOTES" <<EOF
 Unwalled $VERSION: use your Android phone from your Mac.
 
-**Downloads**
-- \`Unwalled-$VERSION-mac.zip\`: the Mac app, for Apple Silicon Macs on macOS 15 or later. Unzip and move **Unwalled** to Applications.
-- \`Unwalled-$VERSION.apk\`: the Android app, for Android 14 or later. Open it on the phone to install (allow installing from your browser or Files app when asked).
+**Install on the Mac** (Apple Silicon, macOS 15 or later): paste this into Terminal.
 
-**First launch on the Mac:** Unwalled isn't notarized by Apple yet, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+\`\`\`
+curl -fsSL https://raw.githubusercontent.com/varunrs50/Unwalled/main/scripts/install.sh | bash
+\`\`\`
+
+Or download \`Unwalled.dmg\` and drag Unwalled to Applications. Unwalled isn't notarized by Apple yet, so the first time, go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+**Install on the phone** (Android 14 or later): scan the **Get the phone app** code in the Mac's pairing window, or download \`Unwalled.apk\` on the phone and open it.
 
 Then pair and set up as described in the [README](https://github.com/varunrs50/Unwalled#set-up).
 
