@@ -342,6 +342,7 @@ final class AppModel {
         case "photos.list" where isPaired: extras.photosList(body)
         case "camera.result" where isPaired: extras.captureResult(body)
         case "screen.state" where isPaired: screen.phoneState(body)
+        case "screen.sound.state" where isPaired: screen.soundState(body)
         case "apps.list" where isPaired: screen.appsList(body)
 
         case "sms.threads" where isPaired:

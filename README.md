@@ -36,7 +36,7 @@ Calls, texts, notifications, files, photos, clipboard and music controls from yo
 | **Notifications** | Phone notifications appear as Mac notifications with the app's icon. Reply right there (WhatsApp, Messages, Telegram…), tap their buttons, or dismiss them, and they clear on the phone too. |
 | **Calls** | When the phone rings, a panel shows who's calling, with **Answer**, **Decline** and **Silence**. Call anyone from the **Calls** window or any phone-number link on the Mac. Missed calls come with **Call Back**. |
 | **Text messages** | A **Messages** window with your conversations. Read and send texts from the Mac; they go out from your phone's SIM. |
-| **Phone screen** | Your phone's screen in a Mac window: click to tap, drag or scroll to swipe, type into text fields. Approve it once on the phone and it opens without asking after that. |
+| **Phone screen** | Your phone's screen in a Mac window, with its sound: click to tap, drag or scroll to swipe, type into text fields. Approve it once on the phone and it opens without asking after that. |
 | **Insert from Phone** | Take a photo or scan a document with the phone, and it's pasted straight into whatever you're working on (Notes, Mail, Pages…). Photos work even when the phone is locked. |
 | **Files** | Drag files onto the menu bar panel to send them to the phone, or share anything on the phone with **Send to Mac**. |
 | **Photos** | Every photo on the phone, by album. Click one to open it on the Mac. |
@@ -103,6 +103,7 @@ The Unwalled app on the phone shows a **Set up** checklist with a button for eac
 | **Photos** | Choose **Allow all** | The Photos window |
 | **Run in the background** | Tap **Allow** | Keeps the connection alive when the phone is idle. **Don't skip this one.** |
 | **Phone control** | In the Accessibility list, tap **Unwalled phone control** and switch it on | Using the phone's screen from the Mac, and opening the camera for Insert from Phone |
+| **Sound in Phone Screen** (optional) | Tap **Allow sound** and allow recording audio. Only what apps play is captured, never calls or the microphone. | Hearing the phone's apps on the Mac in the Phone Screen window |
 | **⟨Maker⟩ battery setting** (Samsung, Xiaomi, OnePlus…) | Tap **Open settings**, follow the steps shown, then tap **I've done this** | Stops your phone maker's own battery saver from closing Unwalled |
 
 > **"Restricted setting"?** Android blocks some permissions for apps installed outside the Play Store. If it says that for **Notifications** or **Phone control**: open **Settings → Apps → Unwalled**, tap **⋮** (top right), choose **Allow restricted settings**, and try again.
@@ -122,7 +123,7 @@ Click the Unwalled icon in the menu bar to see your phone's status, recent notif
 | **Messages…** | Your text conversations. **New Message** starts one. On a dual-SIM phone, the SIM button next to the message box picks which SIM sends it. |
 | **Calls…** | Recent calls and contacts. Click one to call it from the phone. |
 | **Photos…** | All the phone's photos, by album. Click one to open it. |
-| **Phone Screen** | The phone's screen in a window. The first time, tap **Start** on the phone. Click to tap, drag or scroll to swipe, hold for a long press, right-click or Esc for Back, and type into the field you're in (⌘V pastes the Mac clipboard). Back, Home, Recents and **Apps** are in the toolbar. Closing the window pauses sharing; **End** in the menu stops it. |
+| **Phone Screen** | The phone's screen in a window. The first time, tap **Start** on the phone. Click to tap, drag or scroll to swipe, hold for a long press, right-click or Esc for Back, and type into the field you're in (⌘V pastes the Mac clipboard). Back, Home, Recents, **Apps** and **Sound** are in the toolbar. With Sound on, the phone's apps play on the Mac and the phone's own speaker goes quiet until you close the window. Closing the window pauses sharing; **End** in the menu stops it. |
 | **Take Photo with Phone** / **Scan Documents with Phone** | Opens the camera or the document scanner on the phone. Take the shot and it's pasted where you were on the Mac. Several scanned pages arrive as one PDF. The first time, macOS asks to let Unwalled use **Accessibility** so it can paste for you. |
 | **Send File to Phone…** | Pick files to send, or drag them onto the open menu bar panel. They go to **Downloads/Unwalled** on the phone. |
 | **Find My Phone** | Rings the phone. Stop it from the Mac or the phone. |
@@ -267,7 +268,7 @@ The in-app scanner comes from Google Play services, so phones without it (some H
 - **One-time codes:** Android hides SMS verification codes from apps, so they show as "No preview" in Messages. They still appear as notifications.
 - **Away from home:** both devices must be on the same Wi-Fi for now.
 - **Separate windows per app:** the phone's screen opens as one window.
-- **Phone sound in the Phone Screen window:** not yet.
+- **Every app's sound:** some apps (banking, some video apps) don't allow their sound to be captured, and calls never are.
 
 ## How it works
 

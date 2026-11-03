@@ -25,6 +25,17 @@ final class ScreenMirrorController {
 
     /// The phone holds an approved session, so the screen opens without asking on the phone.
     private(set) var ready = false
+    /// The Sound button: play the phone's apps on the Mac while the screen is shown.
+    var soundOn = UserDefaults.standard.object(forKey: "mirror.sound") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(soundOn, forKey: "mirror.sound")
+            connection?()?.send("screen.sound", ["on": soundOn])
+            if !soundOn { stream?.stopSound() }
+            window?.updateSoundButton(on: soundOn)
+        }
+    }
+    /// The phone's answer: on, off, or needs_permission.
+    private(set) var soundState = "off"
 
     private(set) var state: State = .idle
     /// The phone's Accessibility service is on, so clicks and keys can control it.
@@ -67,6 +78,13 @@ final class ScreenMirrorController {
     func dismissError() { if case .failed = state { state = .idle } }
 
     /// `screen.state` from the phone.
+    /// `screen.sound.state` from the phone.
+    func soundState(_ body: Message) {
+        soundState = body["state"] as? String ?? "off"
+        Log.info("Screen sound \(soundState)")
+        if soundState != "on" { stream?.stopSound() }
+    }
+
     func phoneState(_ body: Message) {
         canControl = body["control"] as? Bool ?? canControl
         Log.info("Screen state \(body["state"] as? String ?? "?")\(body["error"].map { ": \($0)" } ?? "")")
@@ -114,6 +132,8 @@ final class ScreenMirrorController {
         window?.fit(width: width, height: height)
         // Frames can arrive before the window exists, and a still screen sends no more; ask for one.
         connection?()?.send("screen.keyframe")
+        connection?()?.send("screen.sound", ["on": soundOn])
+        window?.updateSoundButton(on: soundOn)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
     }
@@ -161,6 +181,8 @@ final class ScreenMirrorController {
 final class VideoStream: @unchecked Sendable {
     private let nw: NWConnection
     private var format: CMVideoFormatDescription?
+    /// The current packet's presentation time, as sent (big-endian µs).
+    private var pts: Int64 = 0
     private var closed = false
     /// Set on the main queue before frames matter; read on the connection's queue.
     var layer: AVSampleBufferDisplayLayer?
@@ -177,9 +199,14 @@ final class VideoStream: @unchecked Sendable {
         readPacket()
     }
 
+    private let audio = AudioPlayer()
+
+    func stopSound() { audio.stop() }
+
     func close() {
         guard !closed else { return }
         closed = true
+        audio.stop()
         nw.cancel()
         DispatchQueue.main.async { self.onClose?() }
     }
@@ -191,6 +218,7 @@ final class VideoStream: @unchecked Sendable {
             guard length >= 9, length <= 8 << 20 else { self.close(); return }
             self.nw.receive(minimumIncompleteLength: length, maximumLength: length) { [weak self] body, _, _, error in
                 guard let self, error == nil, let body, body.count == length else { self?.close(); return }
+                self.pts = body.dropFirst().prefix(8).withUnsafeBytes { $0.loadUnaligned(as: Int64.self) }
                 self.handle(kind: body[body.startIndex], payload: body.dropFirst(9))
                 self.readPacket()
             }
@@ -218,6 +246,11 @@ final class VideoStream: @unchecked Sendable {
                 if layer.sampleBufferRenderer.status == .failed { layer.sampleBufferRenderer.flush() }
                 layer.sampleBufferRenderer.enqueue(sample)
             }
+        case 4:
+            audio.configure(audioSpecificConfig: Data(payload))
+        case 5:
+            let pts = payload.isEmpty ? 0 : Int64(bigEndian: self.pts)
+            audio.play(Data(payload), pts: pts)
         default:
             break
         }
@@ -332,7 +365,15 @@ final class ScreenWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
         (.init("recents"), "Recent Apps", "square.on.square", "recents"),
         (.init("notifications"), "Notifications", "bell", "notifications"),
         (.init("apps"), "Apps", "square.grid.2x2", "apps"),
+        (.init("sound"), "Sound", "speaker.wave.2.fill", "sound"),
     ]
+
+    func updateSoundButton(on: Bool) {
+        guard let item = toolbar?.items.first(where: { $0.itemIdentifier.rawValue == "sound" }) else { return }
+        item.image = NSImage(systemSymbolName: on ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                             accessibilityDescription: on ? "Sound on" : "Sound off")
+        item.toolTip = on ? "Phone sound is on" : "Phone sound is off"
+    }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.flexibleSpace] + Self.items.map(\.0) + [.flexibleSpace]
@@ -357,7 +398,11 @@ final class ScreenWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
     @objc private func toolbarKey(_ sender: NSToolbarItem) {
         guard let key = Self.items.first(where: { $0.0 == sender.itemIdentifier })?.3 else { return }
         MainActor.assumeIsolated {
-            if key == "apps" { controller?.openApps?() } else { controller?.key(key) }
+            switch key {
+            case "apps": controller?.openApps?()
+            case "sound": controller?.soundOn.toggle()
+            default: controller?.key(key)
+            }
         }
     }
 }
@@ -484,5 +529,96 @@ final class ScreenView: NSView {
                 }
             }
         }
+    }
+}
+
+/// Plays the phone's sound: AAC packets, decoded by AVFoundation, slightly behind real time to ride
+/// out Wi-Fi jitter. Used from the video connection's queue.
+final class AudioPlayer: @unchecked Sendable {
+    private let renderer = AVSampleBufferAudioRenderer()
+    private let synchronizer = AVSampleBufferRenderSynchronizer()
+    private var format: CMAudioFormatDescription?
+    private var playing = false
+    private static let delay: Int64 = 120_000      // µs of buffering
+    private static let timescale: CMTimeScale = 1_000_000
+
+    init() { synchronizer.addRenderer(renderer) }
+
+    /// The AAC AudioSpecificConfig from the phone's encoder, wrapped as the ES descriptor Core Audio expects.
+    func configure(audioSpecificConfig asc: Data) {
+        var asbd = AudioStreamBasicDescription(
+            mSampleRate: Self.sampleRate(asc), mFormatID: kAudioFormatMPEG4AAC, mFormatFlags: 0, mBytesPerPacket: 0,
+            mFramesPerPacket: 1024, mBytesPerFrame: 0, mChannelsPerFrame: Self.channels(asc), mBitsPerChannel: 0, mReserved: 0)
+        let cookie = Self.esds(asc)
+        var description: CMAudioFormatDescription?
+        cookie.withUnsafeBytes { raw in
+            _ = CMAudioFormatDescriptionCreate(allocator: nil, asbd: &asbd, layoutSize: 0, layout: nil,
+                                               magicCookieSize: cookie.count, magicCookie: raw.baseAddress,
+                                               extensions: nil, formatDescriptionOut: &description)
+        }
+        format = description
+        stop()
+    }
+
+    func play(_ packet: Data, pts: Int64) {
+        guard let format, !packet.isEmpty else { return }
+        let now = synchronizer.currentTime()
+        let time = CMTime(value: pts, timescale: Self.timescale)
+        // Start (or restart after a gap or drift) slightly behind this packet.
+        if !playing || time < now - CMTime(value: 500_000, timescale: Self.timescale)
+            || time > now + CMTime(value: 1_000_000, timescale: Self.timescale) {
+            renderer.flush()
+            synchronizer.setRate(1, time: CMTime(value: pts - Self.delay, timescale: Self.timescale))
+            playing = true
+        }
+        guard renderer.isReadyForMoreMediaData, let sample = Self.sample(packet, format: format, time: time) else { return }
+        renderer.enqueue(sample)
+    }
+
+    func stop() {
+        guard playing else { return }
+        synchronizer.setRate(0, time: .zero)
+        renderer.flush()
+        playing = false
+    }
+
+    private static func sample(_ packet: Data, format: CMAudioFormatDescription, time: CMTime) -> CMSampleBuffer? {
+        var block: CMBlockBuffer?
+        guard CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: packet.count,
+                                                 blockAllocator: nil, customBlockSource: nil, offsetToData: 0,
+                                                 dataLength: packet.count, flags: 0, blockBufferOut: &block) == noErr,
+              let block else { return nil }
+        packet.withUnsafeBytes { _ = CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: packet.count) }
+        var description = AudioStreamPacketDescription(mStartOffset: 0, mVariableFramesInPacket: 0, mDataByteSize: UInt32(packet.count))
+        var sample: CMSampleBuffer?
+        CMAudioSampleBufferCreateReadyWithPacketDescriptions(allocator: nil, dataBuffer: block, formatDescription: format,
+                                                             sampleCount: 1, presentationTimeStamp: time,
+                                                             packetDescriptions: &description, sampleBufferOut: &sample)
+        return sample
+    }
+
+    private static let rates: [Double] = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350]
+
+    /// Sample rate and channel count from the AudioSpecificConfig's first two bytes.
+    private static func sampleRate(_ asc: Data) -> Double {
+        let b = [UInt8](asc)
+        guard b.count >= 2 else { return 48000 }
+        let index = Int(((b[0] & 0x07) << 1) | (b[1] >> 7))
+        return index < rates.count ? rates[index] : 48000
+    }
+
+    private static func channels(_ asc: Data) -> UInt32 {
+        let b = [UInt8](asc)
+        guard b.count >= 2 else { return 2 }
+        return UInt32((b[1] >> 3) & 0x0f)
+    }
+
+    /// An MPEG-4 ES descriptor holding the AudioSpecificConfig (the "esds" magic cookie).
+    private static func esds(_ asc: Data) -> Data {
+        func descriptor(_ tag: UInt8, _ body: Data) -> Data { Data([tag, UInt8(body.count)]) + body }
+        let specific = descriptor(0x05, asc)
+        let decoderConfig = descriptor(0x04, Data([0x40, 0x15, 0, 0, 0, 0, 0x01, 0xF4, 0x00, 0, 0x01, 0xF4, 0x00]) + specific)
+        let sl = descriptor(0x06, Data([0x02]))
+        return descriptor(0x03, Data([0, 0, 0]) + decoderConfig + sl)
     }
 }

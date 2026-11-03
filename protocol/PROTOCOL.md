@@ -232,6 +232,8 @@ Session: Android requires the user to approve each capture session. Once approve
 | `screen.stop` | Mac → phone | `{}`: pause; the session stays open |
 | `screen.end` | Mac → phone | `{}`: end the session; the next start asks again |
 | `screen.keyframe` | Mac → phone | `{}`: send a key frame now (e.g. after the window opened) |
+| `screen.sound` | Mac → phone | `{on}`: the Sound button. While on and streaming, the phone captures app playback (AudioPlaybackCapture: media, games, unknown usages; apps can opt out; never calls) and mutes its own media volume, restoring it when sound or streaming stops. |
+| `screen.sound.state` | phone → Mac | `{state}`: `on`, `off`, or `needs_permission` (recording permission not granted) |
 | `screen.state` | phone → Mac | `{state, control, error?}`. `state` is `waiting` (asking the user), `running`, `paused` (session kept), `ended`, `declined` or `error`. `control` says whether the Accessibility service is on. Sent on changes and after every `hello`. |
 | `input.touch` | Mac → phone | `{action, x, y}`: a live finger; `action` is `down`, `move` or `up`, `x`/`y` run from 0 to 1 across the screen. Moves come at up to ~60 per second; the phone merges any that arrive while it's busy. |
 | `input.key` | Mac → phone | `{key}`: `back`, `home`, `recents`, `notifications`, `lock`, or `backspace`/`enter` in the focused text field |
@@ -240,7 +242,7 @@ Session: Android requires the user to approve each capture session. Once approve
 | `apps.list` | phone → Mac | `{apps: [{package, label, icon}]}`, launchable apps sorted by name; `icon` is a base64 PNG, 64 px |
 | `apps.launch` | Mac → phone | `{package}`: open that app on the phone |
 
-Video packets: `u32` big-endian length, then `u8` kind, `u64` presentation time in µs, payload. Kinds: `0` JSON `{width, height}` (sent first and after every resize, e.g. rotation), `1` codec config (SPS/PPS, Annex-B), `2` key frame, `3` frame (Annex-B). A still screen sends no frames. The long side is at most 1600 px; 6 Mbit/s, up to 60 fps.
+Video packets: `u32` big-endian length, then `u8` kind, `u64` presentation time in µs, payload. Kinds: `0` JSON `{width, height}` (sent first and after every resize, e.g. rotation), `1` codec config (SPS/PPS, Annex-B), `2` key frame, `3` frame (Annex-B), `4` audio config (AAC AudioSpecificConfig), `5` audio frame (raw AAC-LC, 48 kHz stereo, 128 kbit/s). Audio and video timestamps share the phone's monotonic clock; the Mac plays audio about 120 ms behind to absorb jitter. A still screen sends no frames. The long side is at most 1600 px; 6 Mbit/s, up to 60 fps.
 
 ### Insert from Phone (M7)
 

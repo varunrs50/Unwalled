@@ -93,6 +93,9 @@ object ScreenMirror {
 
     internal fun cancelPrompt(context: Context) = context.getSystemService(NotificationManager::class.java).cancel(PROMPT_ID)
 
+    /** `on`, `off`, or `needs_permission` (the recording permission isn't granted). */
+    internal fun sound(state: String) = LinkBus.send("screen.sound.state", JSONObject().put("state", state))
+
     internal fun state(state: String, error: String? = null) {
         LinkBus.send("screen.state", JSONObject()
             .put("state", state)
@@ -152,6 +155,11 @@ class ScreenCaptureService : Service() {
     private var screen = 0 to 0
     @Volatile var streaming = false
         private set
+    private var audio: AudioCapture? = null
+    private val speaker by lazy { SpeakerMute(this) }
+    /** The Mac's Sound button; on unless the user turned it off. */
+    @Volatile private var soundWanted = true
+    private val writeLock = Any()
     /** The mirrored screen is the phone's real one: wake it when the Mac opens it, and don't let it sleep while shown. */
     @Suppress("DEPRECATION")
     private val awake by lazy {
@@ -170,6 +178,8 @@ class ScreenCaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A volume left muted by a session that ended unexpectedly.
+        if (projection == null) speaker.restore()
         startForeground(NOTIFICATION_ID, notification(streaming = false), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         if (intent?.action == ACTION_END) { stopSelf(); return START_NOT_STICKY }
         @Suppress("DEPRECATION")
@@ -226,6 +236,7 @@ class ScreenCaptureService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(streaming = true))
         val locked = getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
         ScreenMirror.state("running")
+        if (soundWanted) startSound()
         Log.i(TAG, "Screen mirroring streaming at ${size.first}x${size.second}${if (locked) " (phone locked)" else ""}")
     }
 
@@ -239,6 +250,9 @@ class ScreenCaptureService : Service() {
 
     private fun stopStreaming() {
         streaming = false
+        audio?.stop()
+        audio = null
+        speaker.restore()
         display?.surface = null
         codec?.let { runCatching { it.stop() }; it.release() }
         codec = null
@@ -354,18 +368,43 @@ class ScreenCaptureService : Service() {
 
     fun requestKeyFrame() = handler.post { requestKeyFrameNow() }
 
+    /** The Mac's Sound button. */
+    fun setSound(on: Boolean) = handler.post {
+        soundWanted = on
+        if (on && streaming) startSound() else stopSound()
+    }
+
+    private fun startSound() {
+        val p = projection ?: return
+        val capture = audio ?: AudioCapture(this, p, ::write).also { audio = it }
+        if (!capture.allowed) return ScreenMirror.sound("needs_permission")
+        capture.start()
+        speaker.mute()
+        ScreenMirror.sound("on")
+    }
+
+    private fun stopSound() {
+        audio?.stop()
+        audio = null
+        speaker.restore()
+        ScreenMirror.sound("off")
+    }
+
     private fun requestKeyFrameNow() {
         runCatching { codec?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) }) }
     }
 
+    /** Called from the video encoder and the sound capture threads. */
     private fun write(kind: Int, pts: Long, data: ByteArray) {
         val o = out ?: return
         try {
-            o.writeInt(data.size + 9)
-            o.writeByte(kind)
-            o.writeLong(pts)
-            o.write(data)
-            o.flush()
+            synchronized(writeLock) {
+                o.writeInt(data.size + 9)
+                o.writeByte(kind)
+                o.writeLong(pts)
+                o.write(data)
+                o.flush()
+            }
         } catch (e: Exception) {
             // The Mac went away (closed, slept, left the network): keep the session, stop streaming.
             Log.i(TAG, "Video stream closed: ${e.message}")

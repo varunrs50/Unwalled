@@ -330,6 +330,7 @@ class LinkService : Service() {
                     "screen.start" -> app.unwalled.mirror.ScreenMirror.requestStart(this@LinkService)
                     "screen.stop" -> app.unwalled.mirror.ScreenMirror.pause()
                     "screen.end" -> app.unwalled.mirror.ScreenMirror.end(this@LinkService)
+                    "screen.sound" -> app.unwalled.mirror.ScreenCaptureService.instance?.setSound(frame.body.optBoolean("on", true))
                     "screen.keyframe" -> app.unwalled.mirror.ScreenCaptureService.instance?.requestKeyFrame()
                     "input.touch" -> app.unwalled.mirror.ControlService.instance?.touch(frame.body)
                     "input.key" -> app.unwalled.mirror.ControlService.instance?.key(frame.body.optString("key"))

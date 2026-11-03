@@ -305,7 +305,12 @@ private fun PairedContent(macName: String, connected: Boolean, resumeTick: Int, 
                 makerDone = true
             }) { guide.open(context) }
     })
+    val soundAllowed = remember(resumeTick) { context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED }
     val optional = listOf(
+        SetupItem("Sound in Phone Screen", "Hear the phone's apps on the Mac while its screen is shown there. Android asks to allow recording " +
+            "audio: Unwalled only captures what apps play (never calls), not the microphone.", soundAllowed, "Allow sound") {
+            onRequestPermissionsFor(listOf(android.Manifest.permission.RECORD_AUDIO))
+        },
         SetupItem("Copy to Mac tile", "Send what you've copied to the Mac with one tap from Quick Settings.", clipTileAdded, "Add tile") {
             activity?.let(::requestClipTile)
         },
