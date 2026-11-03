@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CryptoKit
 import Observation
 import UserNotifications
@@ -55,6 +56,20 @@ final class ExtrasController {
     /// Photos to open as soon as they finish downloading.
     @ObservationIgnored private var openWhenDone: Set<String> = []
 
+    // MARK: Insert from Pixel (M7)
+
+    enum Capture: Equatable {
+        case waiting(String)    // "photo" or "scan"
+        case failed(String)
+    }
+    private(set) var capture: Capture?
+    /// The capture being waited for, and the app to paste the result into.
+    @ObservationIgnored private var captureID: String?
+    @ObservationIgnored private var captureTarget: NSRunningApplication?
+    /// The last app the user was in other than PixelLink (opening the menu doesn't count).
+    @ObservationIgnored private var lastOtherApp: NSRunningApplication?
+    @ObservationIgnored private var askedForAccessibility = false
+
     private final class Incoming {
         let name: String
         let size: Int64
@@ -73,6 +88,15 @@ final class ExtrasController {
     }
 
     static let chunkBytes = 192 * 1024
+
+    init() {
+        lastOtherApp = NSWorkspace.shared.frontmostApplication
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+            MainActor.assumeIsolated { self?.lastOtherApp = app }
+        }
+    }
 
     /// macOS has no clipboard-changed event, so the clipboard is polled, but only while the
     /// phone is connected, and with tolerance so the system can batch the wakeups.
@@ -254,6 +278,10 @@ final class ExtrasController {
             reject(id, "File arrived damaged")
             return
         }
+        if id.hasPrefix("camera-") {
+            insertCapture(file.temp, name: file.name, id: id)
+            return
+        }
         do {
             let destination = Self.uniqueDownloadURL(for: file.name)
             try FileManager.default.moveItem(at: file.temp, to: destination)
@@ -339,6 +367,85 @@ final class ExtrasController {
             n += 1
         }
         return url
+    }
+
+    // MARK: Insert from Pixel
+
+    /// Takes a photo or scans a document on the phone, then pastes it into the app you were in.
+    func startCapture(_ mode: String) {
+        guard let conn = connection?() else { return }
+        let id = String(UUID().uuidString.prefix(8)).lowercased()
+        captureID = id
+        captureTarget = lastOtherApp
+        capture = .waiting(mode)
+        conn.send("camera.capture", ["id": id, "mode": mode])
+        // Asked now, while the user is here, so pasting works when the photo arrives.
+        if !AXIsProcessTrusted(), !askedForAccessibility {
+            askedForAccessibility = true
+            AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        }
+    }
+
+    func cancelCapture() {
+        captureID = nil
+        capture = nil
+    }
+
+    func captureResult(_ body: Message) {
+        guard body["id"] as? String == captureID, body["ok"] as? Bool == false else { return }
+        captureID = nil
+        capture = .failed(body["error"] as? String ?? "Cancelled on the phone")
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            if case .failed = self?.capture { self?.capture = nil }
+        }
+    }
+
+    private func insertCapture(_ temp: URL, name: String, id: String) {
+        connection?()?.send("file.result", ["id": id, "ok": true])
+        finish(id, error: nil)
+        let dir = AppPaths.support.appendingPathComponent("Captures", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        try? FileManager.default.removeItem(at: url)
+        guard (try? FileManager.default.moveItem(at: temp, to: url)) != nil else { return }
+        guard id == "camera-\(captureID ?? "")" else { notifyReceived(url); return }
+        captureID = nil
+        capture = nil
+
+        // Image or PDF data plus the file itself, so both rich-text apps and Finder-style drop targets take it.
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        if url.pathExtension.lowercased() == "pdf" {
+            pb.writeObjects([url as NSURL])
+            if let data = try? Data(contentsOf: url) { pb.setData(data, forType: .pdf) }
+        } else if let image = NSImage(contentsOf: url) {
+            pb.writeObjects([image, url as NSURL])
+        }
+        // Don't send this to the phone's clipboard.
+        lastChangeCount = pb.changeCount
+        Log.info("Inserting \(name) into \(captureTarget?.localizedName ?? "the front app")")
+
+        guard AXIsProcessTrusted(), let target = captureTarget else {
+            notifyCopied(name)
+            return
+        }
+        target.activate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            let source = CGEventSource(stateID: .combinedSessionState)
+            for down in [true, false] {
+                let event = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: down)   // V
+                event?.flags = .maskCommand
+                event?.post(tap: .cghidEventTap)
+            }
+        }
+    }
+
+    private func notifyCopied(_ name: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "From your phone"
+        content.body = "\(name.lowercased().hasSuffix(".pdf") ? "Scan" : "Photo") copied. Press ⌘V to paste it."
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "capture-\(UUID().uuidString)", content: content, trigger: nil))
     }
 
     // MARK: Photos

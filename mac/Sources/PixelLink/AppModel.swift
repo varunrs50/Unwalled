@@ -307,6 +307,7 @@ final class AppModel {
         case "file.cancel" where isPaired: extras.cancel(body)
         case "file.result" where isPaired: extras.result(body)
         case "photos.list" where isPaired: extras.photosList(body)
+        case "camera.result" where isPaired: extras.captureResult(body)
         case "screen.state" where isPaired: screen.phoneState(body)
         case "apps.list" where isPaired: screen.appsList(body)
 

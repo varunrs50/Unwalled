@@ -242,6 +242,15 @@ Session: Android requires the user to approve each capture session. Once approve
 
 Video packets: `u32` big-endian length, then `u8` kind, `u64` presentation time in µs, payload. Kinds: `0` JSON `{width, height}` (sent first and after every resize, e.g. rotation), `1` codec config (SPS/PPS, Annex-B), `2` key frame, `3` frame (Annex-B). A still screen sends no frames. The long side is at most 1600 px; 6 Mbit/s, up to 60 fps.
 
+### Insert from Pixel (M7)
+
+| Type | Direction | Body |
+|---|---|---|
+| `camera.capture` | Mac → phone | `{id, mode}`: `mode` is `photo` or `scan`. The phone opens its camera (the secure camera when locked) or the document scanner. |
+| `camera.result` | phone → Mac | `{id, ok: false, error}`: sent only when nothing is coming (cancelled, or the phone stayed locked for a scan) |
+
+A successful capture arrives as an ordinary file transfer (`file.offer` …) whose `id` is `camera-<id>`: a JPEG for a photo or a one-page scan, a PDF for several pages. The Mac doesn't save it to Downloads; it pastes it into the app that was in front when the capture was requested.
+
 ### Later milestones
 
 Notifications, SMS, calls, files and the other message types are listed in PLAN.md §4. Each gets its body format here as its milestone is built.

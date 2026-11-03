@@ -91,6 +91,7 @@ struct MenuContent: View {
                 Button("Calls…") { open("calls") }
                 Button("Photos…") { open("photos") }
                 MirrorMenuSection()
+                InsertMenuSection()
                 Button("Send File to Phone…") { model.extras.chooseFilesToSend() }
                     .disabled(model.state != .connected)
                 Button(model.extras.ringing ? "Stop Ringing Phone" : "Find My Phone") { model.extras.toggleRing() }

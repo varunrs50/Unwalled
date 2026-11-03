@@ -52,6 +52,7 @@ Calls, text messages, notifications, files, photos, clipboard and media controls
 | **Clipboard** | Copy on the Mac and paste on the phone, or the other way round. Password-manager copies are never sent. |
 | **Files** | Drag files onto the menu bar panel to send them to the phone, or share anything from the phone with **Send to Mac**. Every transfer is checked with a SHA-256 checksum. |
 | **Photos** | A **Photos** window with every photo on the phone, browsable by album. Click one to download it. |
+| **Insert from Pixel** | Take a photo or scan a document with the phone and it's pasted straight into the Mac app you're in (Notes, Mail, Pages…). Photos work even with the phone locked. |
 | **Phone screen** | The phone's screen in a Mac window: click to tap, drag or scroll to swipe, type into text fields, with Back, Home, Recents and an **Apps** list in the toolbar. Approve it once on the phone and it opens without asking after that. |
 | **Status** | Battery, signal and Wi-Fi of the phone in the menu bar. |
 
@@ -322,6 +323,7 @@ On the Mac: **System Settings → General → Login Items & Extensions → Open 
 | **Photos…** | All photos on the phone; pick an album from the toolbar. Click a photo to download it to **Downloads** and open it. |
 | **Send File to Phone…** | Pick files to send. You can also drag files onto the open menu bar panel. |
 | **Phone Screen** | Opens the phone's screen in a window. The first time, tap **Start** on the phone. Click to tap, drag or scroll to swipe, hold for a long press, right-click or Esc for Back, and type into the field you're in (⌘V types the Mac clipboard). The toolbar has Back, Home, Recents, Notifications and **Apps**. Closing the window pauses sharing; **End** in the menu stops it on the phone. |
+| **Take Photo with Phone** / **Scan Documents with Phone** | Opens the camera or Google's document scanner on the phone. Take the shot and it's pasted where your cursor was on the Mac. Photos work with the phone locked; scans ask you to unlock. Several scanned pages arrive as one PDF. The first time, macOS asks to let PixelLink use **Accessibility** so it can paste for you; without it the result is put on the clipboard for you to press ⌘V. |
 | **Find My Phone** | Rings the phone. Click **Stop Ringing Phone**, or tap **Stop** on the phone. |
 | **Share clipboard with phone** | Turns clipboard sync on or off in both directions. |
 | **Unpair** | Forgets the phone. Pair again with **Pair a phone…**. |
@@ -448,8 +450,9 @@ PixelLink/
 │       ├── link/               LinkService (foreground service), TLS socket, pairing, discovery
 │       ├── notifications/      NotificationListenerService bridge
 │       ├── calls/  sms/  contacts/
-│       └── extras/             find my phone, media, clipboard, files, photos, share sheet
-│       └── mirror/             screen capture and encoder, phone control (Accessibility), app list
+│       ├── extras/             find my phone, media, clipboard, files, photos, share sheet
+│       ├── mirror/             screen capture and encoder, phone control (Accessibility), app list
+│       └── camera/             Insert from Pixel: camera and document scanner
 ├── protocol/PROTOCOL.md        wire protocol between phone and Mac
 └── PLAN.md                     design, milestones and progress
 ```
@@ -498,7 +501,7 @@ adb -s emulator-5554 emu sms send 5551234 "Hello"
 | M4 | SMS: conversations, read and send | ✅ |
 | M5 | Files, photos, clipboard, find my phone, media controls | ✅ |
 | M6 | Phone screen on the Mac: native capture, mouse and keyboard control, approve once | ✅ |
-| M7 | Camera: "Insert from Pixel" photo and document scan | Planned |
+| M7 | Insert from Pixel: photo and document scan pasted into the Mac app you're in | ✅ |
 | M8 | Polish: launch at login, onboarding, prebuilt releases | Planned |
 | 2.0 | Away-from-home connection, call audio experiments, wireless webcam | Ideas |
 

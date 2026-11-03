@@ -119,7 +119,8 @@ class LinkService : Service() {
             ACTION_SEND_FILES -> {
                 val clip = intent.clipData
                 val uris = (0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri }
-                uris.forEach { uri -> sendFile(uri, "file-${java.util.UUID.randomUUID()}") }
+                val fixedId = intent.getStringExtra(EXTRA_FILE_ID)
+                uris.forEach { uri -> sendFile(uri, fixedId ?: "file-${java.util.UUID.randomUUID()}") }
             }
             else -> if (loop?.isActive != true) {
                 if (store.mac == null) forget() else restart { runLoop() }
@@ -332,6 +333,7 @@ class LinkService : Service() {
                     "input.touch" -> app.pixellink.mirror.ControlService.instance?.touch(frame.body)
                     "input.key" -> app.pixellink.mirror.ControlService.instance?.key(frame.body.optString("key"))
                     "input.text" -> app.pixellink.mirror.ControlService.instance?.type(frame.body.optString("text"))
+                    "camera.capture" -> app.pixellink.camera.CameraCapture.request(this@LinkService, frame.body.getString("id"), frame.body.optString("mode", "photo"))
                     "apps.request" -> fs.send("apps.list", appList.apps(), frame.id)
                     "apps.launch" -> app.pixellink.mirror.ControlService.instance?.launch(frame.body.optString("package"))
                     "photos.get" -> frame.body.getLong("id").let { id -> sendFile(photos.uri(id), "photo-$id") }
@@ -505,12 +507,16 @@ class LinkService : Service() {
         private const val ACTION_SEND_FILES = "app.pixellink.action.SEND_FILES"
 
         /** Sends shared files to the Mac; the read grant on the URIs is passed on to the service. */
-        fun sendFiles(context: Context, uris: List<android.net.Uri>) {
+        private const val EXTRA_FILE_ID = "file_id"
+
+        /** `id` names the transfer (one file only), e.g. so the Mac can tell a camera result apart. */
+        fun sendFiles(context: Context, uris: List<android.net.Uri>, id: String? = null) {
             if (uris.isEmpty()) return
             val clip = android.content.ClipData.newRawUri("files", uris.first())
             uris.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it)) }
             val intent = Intent(context, LinkService::class.java).setAction(ACTION_SEND_FILES)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            id?.let { intent.putExtra(EXTRA_FILE_ID, it) }
             intent.clipData = clip
             context.startForegroundService(intent)
         }

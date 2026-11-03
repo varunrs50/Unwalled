@@ -112,3 +112,30 @@ struct PhotosView: View {
         .onAppear { if model.state == .connected { model.extras.refreshPhotos() } }
     }
 }
+
+/// Insert from Pixel: photo or document scan from the phone, pasted into the app you were in.
+struct InsertMenuSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let extras = model.extras
+        Button("Take Photo with Phone") { extras.startCapture("photo") }
+            .disabled(model.state != .connected)
+        Button("Scan Documents with Phone") { extras.startCapture("scan") }
+            .disabled(model.state != .connected)
+        switch extras.capture {
+        case .waiting(let mode):
+            HStack(alignment: .top, spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(mode == "scan" ? "Scan on your phone; it'll be pasted where you were" : "Take the photo on your phone; it'll be pasted where you were")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button { extras.cancelCapture() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
+            }
+        case .failed(let error):
+            Text(error).font(.caption).foregroundStyle(.orange)
+        case nil:
+            EmptyView()
+        }
+    }
+}
