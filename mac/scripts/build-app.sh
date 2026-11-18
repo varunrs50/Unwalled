@@ -7,8 +7,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 CONFIG="${1:-debug}"
 
-# Fall back to the Command Line Tools while the Xcode license is unaccepted.
-if ! xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+# Prefer Xcode when it's set up, even if xcode-select or DEVELOPER_DIR points at the Command Line Tools: since
+# macOS 27.2 only Xcode has the SwiftUI macro plugin. Otherwise use whatever xcode-select chose.
+XCODE=/Applications/Xcode.app/Contents/Developer
+if DEVELOPER_DIR=$XCODE xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+    export DEVELOPER_DIR=$XCODE
+elif ! xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
     export DEVELOPER_DIR=/Library/Developer/CommandLineTools
 fi
 
