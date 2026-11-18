@@ -216,6 +216,7 @@ class ScreenCaptureService : Service() {
 
     /** Starts (or restarts) streaming to the Mac. */
     fun resume() = handler.post {
+        handler.removeCallbacks(endIdle)
         if (streaming) { requestKeyFrameNow(); ScreenMirror.state("running"); return@post }
         val mac = PairingStore(this).mac ?: return@post
         try {
@@ -242,10 +243,23 @@ class ScreenCaptureService : Service() {
 
     /** Stops streaming but keeps the approved session. */
     fun pause() = handler.post {
-        if (!streaming) { ScreenMirror.state("paused"); return@post }
-        stopStreaming()
+        if (streaming) stopStreaming()
         ScreenMirror.state("paused")
-        Log.i(TAG, "Screen mirroring paused; session kept")
+        // Without phone control, Unwalled can't see payment apps opening to end the session for them,
+        // so it doesn't keep it around for long.
+        if (!ControlService.isEnabled(this)) {
+            handler.postDelayed(endIdle, IDLE_END_MS)
+            Log.i(TAG, "Screen mirroring paused; session ends in 2 minutes")
+        } else {
+            Log.i(TAG, "Screen mirroring paused; session kept")
+        }
+    }
+
+    private val endIdle = Runnable {
+        if (!streaming) {
+            Log.i(TAG, "Ending the idle screen-sharing session")
+            stopSelf()
+        }
     }
 
     private fun stopStreaming() {
@@ -434,6 +448,7 @@ class ScreenCaptureService : Service() {
         private const val CHANNEL = "mirror.active"
         private const val NOTIFICATION_ID = 9
         private const val ACTION_END = "app.unwalled.action.END_MIRROR"
+        private const val IDLE_END_MS = 2 * 60_000L
         /** Long sides to try, largest first; the first one the encoder accepts is used. */
         private val LONG_SIDES = listOf(1600, 1280, 960, 720)
         private const val BIT_RATE = 6_000_000

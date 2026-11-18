@@ -30,7 +30,18 @@ class ControlService : AccessibilityService() {
         super.onDestroy()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    private var lastWindow = ""
+
+    /** Watches which app is in front, so Unwalled can step aside for payment apps. */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        val cls = event.className?.toString().orEmpty()
+        val window = "$pkg/$cls"
+        if (window == lastWindow) return
+        lastWindow = window
+        app.unwalled.setup.PaymentGuard.onWindow(this, pkg, cls)
+    }
     override fun onInterrupt() {}
 
     // MARK: Live touch

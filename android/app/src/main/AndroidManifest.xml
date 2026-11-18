@@ -143,6 +143,17 @@
         </service>
 
         <service
+            android:name=".setup.PaymentModeTile"
+            android:exported="true"
+            android:label="Payment mode"
+            android:icon="@drawable/ic_stat_link"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".extras.ClipTileService"
             android:exported="true"
             android:label="Copy to Mac"
