@@ -12,6 +12,9 @@ REPO="varunrs50/Unwalled"
 BASE="${UNWALLED_BASE:-https://github.com/$REPO/releases/latest/download}"
 APP_NAME="Unwalled.app"
 
+# Everything runs from main, called on the last line, so a download cut off midway runs nothing.
+main() {
+
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -54,8 +57,10 @@ if [[ -z "${UNWALLED_NO_OPEN:-}" ]] && pgrep -xq Unwalled; then
     for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -xq Unwalled || break; sleep 0.5; done
 fi
 
+# Copy beside the old app, then swap, so a failed copy never leaves the user with no app.
+ditto "$work/app/$APP_NAME" "$dest/.$APP_NAME.new"
 rm -rf "$dest/$APP_NAME"
-ditto "$work/app/$APP_NAME" "$dest/$APP_NAME"
+mv "$dest/.$APP_NAME.new" "$dest/$APP_NAME"
 # Downloaded with curl, so macOS hasn't marked it as quarantined; make sure anyway.
 xattr -dr com.apple.quarantine "$dest/$APP_NAME" 2>/dev/null || true
 
@@ -73,3 +78,6 @@ Next:
 
 Unwalled lives in your menu bar. Help: https://github.com/$REPO#set-up
 EOF
+}
+
+main "$@"

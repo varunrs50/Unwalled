@@ -39,6 +39,8 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
     private var receiver: BroadcastReceiver? = null
     private var lastState = TelephonyManager.EXTRA_STATE_IDLE
     private var current: Call? = null
+    /** A second call ringing during a call (call waiting). */
+    private var waiting: Call? = null
     /** Number we just dialled from the Mac, so the outgoing call can show who it's to. */
     private var dialled: String? = null
     private var dialledAt = 0L
@@ -78,7 +80,13 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
         val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)?.takeIf { it.isNotBlank() }
 
         when (state) {
-            TelephonyManager.EXTRA_STATE_RINGING -> {
+            TelephonyManager.EXTRA_STATE_RINGING -> if (lastState == TelephonyManager.EXTRA_STATE_OFFHOOK && current != null) {
+                // Call waiting: a call of its own, so the call in progress keeps its id.
+                val call = waiting ?: Call(direction = "incoming", number = number)
+                if (number != null) call.number = number
+                waiting = call
+                report(call, "ringing")
+            } else {
                 val call = current?.takeIf { it.direction == "incoming" } ?: Call(direction = "incoming", number = number)
                 if (number != null) call.number = number
                 current = call
@@ -86,7 +94,14 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
             }
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
                 val call = current
-                if (call != null && lastState == TelephonyManager.EXTRA_STATE_RINGING) {
+                val waited = waiting
+                if (waited != null) {
+                    // shortcut: this broadcast can't tell a waiting call answered from declined; it's reported
+                    // ended and the Mac shows the original call again. Upgrade needs the dialer (InCallService) role.
+                    waiting = null
+                    report(waited, "ended", "completed")
+                    call?.let { report(it, "active") }
+                } else if (call != null && lastState == TelephonyManager.EXTRA_STATE_RINGING) {
                     call.answered = true
                     report(call, "active")
                 } else if (lastState == TelephonyManager.EXTRA_STATE_IDLE) {
@@ -99,6 +114,8 @@ class CallBridge(private val context: Context, private val send: (String, JSONOb
             }
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 restoreRinger()
+                waiting?.let { report(it, "ended", "missed") }
+                waiting = null
                 current?.let { call ->
                     val reason = when {
                         call.direction == "outgoing" || call.answered -> "completed"

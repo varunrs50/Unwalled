@@ -35,12 +35,14 @@ class FileTransfer(private val context: Context) {
     )
 
     private val incoming = HashMap<String, Incoming>()
-    private val tempDir = File(context.cacheDir, "incoming").apply { mkdirs() }
+    // Leftovers from transfers cut off before the app last stopped.
+    private val tempDir = File(context.cacheDir, "incoming").apply { deleteRecursively(); mkdirs() }
 
     // MARK: Receiving (Mac → phone)
 
     fun offer(body: JSONObject) {
         val id = body.getString("id")
+        cancel(id)
         val temp = File(tempDir, id.filter { it.isLetterOrDigit() || it == '-' })
         incoming[id] = Incoming(
             name = body.getString("name").replace('/', '_'),
@@ -90,6 +92,9 @@ class FileTransfer(private val context: Context) {
         incoming.remove(id)?.let { it.out.close(); it.temp.delete() }
     }
 
+    /** The connection dropped: nothing in flight will be finished. */
+    fun cancelAll() = incoming.keys.toList().forEach(::cancel)
+
     private fun fail(id: String, error: String): JSONObject {
         cancel(id)
         return JSONObject().put("id", id).put("ok", false).put("error", error)
@@ -104,7 +109,12 @@ class FileTransfer(private val context: Context) {
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("Downloads unavailable")
-        resolver.openOutputStream(uri)!!.use { out -> file.temp.inputStream().use { it.copyTo(out) } }
+        try {
+            resolver.openOutputStream(uri)!!.use { out -> file.temp.inputStream().use { it.copyTo(out) } }
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            throw e
+        }
         resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
         return uri
     }
@@ -129,9 +139,9 @@ class FileTransfer(private val context: Context) {
     // MARK: Sending (phone → Mac)
 
     /** Streams `uri` to the Mac over `fs`. Blocks until sent; the Mac's `file.result` arrives later. */
-    fun send(fs: FrameSocket, uri: Uri, id: String) {
+    fun send(fs: FrameSocket, uri: Uri, id: String, knownName: String? = null) {
         val resolver = context.contentResolver
-        var name = uri.lastPathSegment ?: "file"
+        var name = knownName ?: uri.lastPathSegment ?: "file"
         var size = -1L
         resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
             if (c.moveToFirst()) {
@@ -140,6 +150,16 @@ class FileTransfer(private val context: Context) {
             }
         }
         if (size < 0) size = resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1
+        // The Mac checks the size, so a source that doesn't report one is copied first to learn it.
+        if (size < 0) {
+            val copy = File(context.cacheDir, "outgoing-${id.filter { it.isLetterOrDigit() || it == '-' }}")
+            try {
+                resolver.openInputStream(uri)!!.use { input -> copy.outputStream().use { input.copyTo(it) } }
+                return send(fs, Uri.fromFile(copy), id, name)
+            } finally {
+                copy.delete()
+            }
+        }
         val mime = resolver.getType(uri) ?: "application/octet-stream"
         fs.send("file.offer", JSONObject().put("id", id).put("name", name).put("size", size).put("mime", mime))
 

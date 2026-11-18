@@ -26,7 +26,7 @@ struct MirrorMenuSection: View {
                     .help("Stop")
             }
         case .running where !screen.canControl:
-            Text("To control the phone with your mouse, turn on Unwalled phone control in the Unwalled app on the phone.")
+            Text("To control the phone with your mouse, turn on Unwalled phone control in the Unwalled app on the phone. Until then, payment apps on the phone won't work while its screen is shown here.")
                 .font(.caption).foregroundStyle(.secondary)
         case .failed(let error):
             HStack(alignment: .top) {

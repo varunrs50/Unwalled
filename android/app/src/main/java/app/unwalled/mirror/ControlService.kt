@@ -97,10 +97,12 @@ class ControlService : AccessibilityService() {
         lastPiece = android.os.SystemClock.uptimeMillis()
         val ok = dispatchGesture(GestureDescription.Builder().addStroke(piece).build(), object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
+                if (stroke !== piece) return
                 inFlight = false
                 if (!piece.willContinue()) { stroke = null; lifting = false } else next()
             }
             override fun onCancelled(gestureDescription: GestureDescription?) {
+                if (stroke !== piece) return
                 inFlight = false
                 stroke = null
                 lifting = false

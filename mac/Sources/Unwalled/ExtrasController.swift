@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import CryptoKit
 import Observation
+import UniformTypeIdentifiers
 import UserNotifications
 
 struct NowPlaying: Equatable {
@@ -247,13 +248,20 @@ final class ExtrasController {
 
     func offer(_ body: Message) {
         guard let id = body["id"] as? String, let name = body["name"] as? String else { return }
+        guard SafeName.isPlainFile(name) else {
+            connection?()?.send("file.result", ["id": id, "ok": false, "error": "Bad file name"])
+            return
+        }
+        if let old = incoming.removeValue(forKey: id) {
+            try? old.handle.close()
+            try? FileManager.default.removeItem(at: old.temp)
+        }
         let size = (body["size"] as? NSNumber)?.int64Value ?? 0
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent("unwalled-\(UUID().uuidString)")
         FileManager.default.createFile(atPath: temp.path, contents: nil)
         guard let handle = try? FileHandle(forWritingTo: temp) else { return }
-        let safeName = name.replacingOccurrences(of: "/", with: "_")
-        incoming[id] = Incoming(name: safeName, size: size, temp: temp, handle: handle)
-        transfers.insert(Transfer(id: id, name: safeName, size: size, direction: .fromPhone), at: 0)
+        incoming[id] = Incoming(name: name, size: size, temp: temp, handle: handle)
+        transfers.insert(Transfer(id: id, name: name, size: size, direction: .fromPhone), at: 0)
     }
 
     func chunk(_ body: Message) {
@@ -262,7 +270,8 @@ final class ExtrasController {
             reject(id, "Chunks arrived out of order")
             return
         }
-        file.handle.write(data)
+        guard file.received + Int64(data.count) <= file.size else { reject(id, "File is bigger than announced"); return }
+        do { try file.handle.write(contentsOf: data) } catch { reject(id, "Couldn't save: \(error.localizedDescription)"); return }
         file.hasher.update(data: data)
         file.received += Int64(data.count)
         file.nextSeq += 1
@@ -278,18 +287,28 @@ final class ExtrasController {
             reject(id, "File arrived damaged")
             return
         }
-        if id.hasPrefix("camera-") {
+        if id == "camera-\(captureID ?? "")" {
             insertCapture(file.temp, name: file.name, id: id)
             return
         }
         do {
             let destination = Self.uniqueDownloadURL(for: file.name)
             try FileManager.default.moveItem(at: file.temp, to: destination)
+            // Like a browser download: macOS checks it before anything in it runs.
+            var downloaded = destination
+            var values = URLResourceValues()
+            values.quarantineProperties = [kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload]
+            try? downloaded.setResourceValues(values)
             connection?()?.send("file.result", ["id": id, "ok": true])
             finish(id, error: nil)
             Log.info("Saved a file to Downloads")
             if openWhenDone.remove(id) != nil {
-                NSWorkspace.shared.open(destination)
+                // A requested photo opens; anything else that arrives instead is only shown in Finder.
+                if UTType(filenameExtension: destination.pathExtension)?.conforms(to: .image) == true {
+                    NSWorkspace.shared.open(destination)
+                } else {
+                    NSWorkspace.shared.activateFileViewerSelecting([destination])
+                }
             } else {
                 notifyReceived(destination)
             }
@@ -409,7 +428,6 @@ final class ExtrasController {
         let url = dir.appendingPathComponent(name)
         try? FileManager.default.removeItem(at: url)
         guard (try? FileManager.default.moveItem(at: temp, to: url)) != nil else { return }
-        guard id == "camera-\(captureID ?? "")" else { notifyReceived(url); return }
         captureID = nil
         capture = nil
 

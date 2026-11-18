@@ -171,7 +171,12 @@ fun HomeScreen(
             AlertDialog(
                 onDismissRequest = { pendingPayload.value = null },
                 title = { Text("Pair with ${payload.name}?") },
-                text = { Text("This phone will connect to ${payload.name} at ${payload.host}. You'll confirm on the Mac too.") },
+                text = {
+                    val current = PairingStore(context).mac
+                    Text((current?.let { "This replaces ${it.name}, which this phone is paired with now. " } ?: "") +
+                        "This phone will connect to the Mac at ${payload.host} (code ${payload.fingerprint.take(8)}). " +
+                        "Only continue if you just showed a pairing code on your own Mac.")
+                },
                 confirmButton = {
                     TextButton(onClick = {
                         LinkService.pair(context, text)

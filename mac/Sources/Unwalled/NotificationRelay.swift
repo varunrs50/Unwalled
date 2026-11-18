@@ -51,7 +51,7 @@ final class NotificationRelay: NSObject, UNUserNotificationCenterDelegate {
     /// Parses a `notif.posted` body; shows it unless it was already on the phone (`initial`).
     func posted(_ body: Message) -> PhoneNotification? {
         guard let key = body["key"] as? String, let package = body["package"] as? String else { return nil }
-        if let icon = (body["icon"] as? String).flatMap({ Data(base64Encoded: $0) }) {
+        if SafeName.isPackage(package), let icon = (body["icon"] as? String).flatMap({ Data(base64Encoded: $0) }) {
             try? icon.write(to: iconURL(package), options: .atomic)
         }
         let actions = (body["actions"] as? [Message] ?? []).compactMap { a -> PhoneNotification.Action? in

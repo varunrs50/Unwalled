@@ -71,6 +71,7 @@ final class LinkServer {
                 if case .failed = state { nw.cancel() }
             }
             nw.start(queue: DispatchQueue(label: "app.unwalled.video"))
+            self?.queue.asyncAfter(deadline: .now() + 15) { if nw.state != .ready { nw.cancel() } }
         }
         video.start(queue: queue)
         videoListener = video
@@ -108,6 +109,8 @@ final class LinkServer {
     private func accept(_ nw: NWConnection) {
         let conn = PhoneConnection(nw, queue: queue)
         open[ObjectIdentifier(conn)] = conn
+        // Half-open connections would otherwise pile up; the phone finishes the handshake in well under this.
+        queue.asyncAfter(deadline: .now() + 15) { [weak conn] in if let conn, conn.fingerprint == nil { conn.close() } }
         conn.onReady = { [weak self] conn in
             guard let self else { return }
             // One phone at a time: a new trusted connection replaces the old one.

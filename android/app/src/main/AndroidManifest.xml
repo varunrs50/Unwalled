@@ -48,11 +48,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Scanning the Mac's pairing code with the Camera app opens Unwalled. -->
+            <!-- Scanning the Mac's pairing code with the Camera app opens Unwalled. Not BROWSABLE:
+                 web pages mustn't be able to start pairing. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="unwalled" android:host="pair" />
             </intent-filter>
         </activity>

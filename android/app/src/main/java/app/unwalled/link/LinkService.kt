@@ -235,11 +235,17 @@ class LinkService : Service() {
 
     private fun connect(host: String, port: Int, fingerprint: String): FrameSocket {
         val raw = Socket().apply { connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS) }
-        val ssl = Identity.sslContext(fingerprint).socketFactory.createSocket(raw, host, port, true) as SSLSocket
-        ssl.enabledProtocols = arrayOf("TLSv1.3")
-        ssl.soTimeout = IDLE_TIMEOUT_MS
-        ssl.startHandshake()
-        return FrameSocket(ssl)
+        try {
+            val ssl = Identity.sslContext(fingerprint).socketFactory.createSocket(raw, host, port, true) as SSLSocket
+            ssl.enabledProtocols = arrayOf("TLSv1.3")
+            ssl.soTimeout = CONNECT_TIMEOUT_MS
+            ssl.startHandshake()
+            ssl.soTimeout = IDLE_TIMEOUT_MS
+            return FrameSocket(ssl)
+        } catch (e: Exception) {
+            runCatching { raw.close() }
+            throw e
+        }
     }
 
     private suspend fun session(fs: FrameSocket, mac: PairedMac, greet: Boolean) = coroutineScope {
@@ -332,9 +338,15 @@ class LinkService : Service() {
                     "screen.end" -> app.unwalled.mirror.ScreenMirror.end(this@LinkService)
                     "screen.sound" -> app.unwalled.mirror.ScreenCaptureService.instance?.setSound(frame.body.optBoolean("on", true))
                     "screen.keyframe" -> app.unwalled.mirror.ScreenCaptureService.instance?.requestKeyFrame()
-                    "input.touch" -> app.unwalled.mirror.ControlService.instance?.touch(frame.body)
-                    "input.key" -> app.unwalled.mirror.ControlService.instance?.key(frame.body.optString("key"))
-                    "input.text" -> app.unwalled.mirror.ControlService.instance?.type(frame.body.optString("text"))
+                    // Control only while the screen is shown, so it never happens without the sharing indicator.
+                    "input.touch", "input.key", "input.text" -> if (app.unwalled.mirror.ScreenCaptureService.instance?.streaming == true) {
+                        val control = app.unwalled.mirror.ControlService.instance
+                        when (frame.type) {
+                            "input.touch" -> control?.touch(frame.body)
+                            "input.key" -> control?.key(frame.body.optString("key"))
+                            else -> control?.type(frame.body.optString("text"))
+                        }
+                    }
                     "camera.capture" -> app.unwalled.camera.CameraCapture.request(this@LinkService, frame.body.getString("id"), frame.body.optString("mode", "photo"))
                     "apps.request" -> fs.send("apps.list", appList.apps(), frame.id)
                     "apps.launch" -> app.unwalled.mirror.ControlService.instance?.launch(frame.body.optString("package"))
@@ -345,6 +357,7 @@ class LinkService : Service() {
         } finally {
             LinkBus.sender = null
             frames = null
+            files.cancelAll()
             coroutineContext.cancelChildren()
         }
     }
@@ -388,6 +401,7 @@ class LinkService : Service() {
     }
 
     private fun forget() {
+        app.unwalled.mirror.ScreenMirror.end(this)
         store.mac = null
         loop?.cancel()
         frames?.close()
@@ -419,9 +433,13 @@ class LinkService : Service() {
                     val prefix = text.removePrefix("UWNUDGE1 ").takeIf { it != text && it.length == 16 } ?: continue
                     val mac = store.mac ?: continue
                     if (!mac.fingerprint.startsWith(prefix)) continue
-                    Log.i(TAG, "Nudged by ${mac.name}, reconnecting")
-                    frames?.close()
-                    wake.trySend(Unit)
+                    // The fingerprint prefix is public (Bonjour), so a nudge only probes a live session: if the
+                    // Mac really restarted the write fails and the session ends; otherwise nothing changes.
+                    val live = frames
+                    if (live != null) runCatching { live.send("ping") } else {
+                        Log.i(TAG, "Nudged by ${mac.name}, reconnecting")
+                        wake.trySend(Unit)
+                    }
                 }
             } finally {
                 socket.close()

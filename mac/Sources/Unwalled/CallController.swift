@@ -137,7 +137,7 @@ final class CallController {
         let cleaned = number.filter { $0.isNumber || $0 == "+" || $0 == "*" || $0 == "#" }
         guard !cleaned.isEmpty else { return }
         send?("call.dial", ["number": cleaned])
-        Log.info("Dialling \(cleaned)")
+        Log.info("Dialling")
     }
 
     /// Forgets the cached call history and contacts; they're fetched again from the phone.

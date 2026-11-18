@@ -63,10 +63,13 @@ enum Log {
         .appendingPathComponent("Library/Logs/Unwalled/Unwalled.log")
     private static let queue = DispatchQueue(label: "app.unwalled.log")
     private static let maxBytes = 2 << 20
-    private static let handle: FileHandle? = {
+    private static var handle: FileHandle? = open()
+    private static var writes = 0
+
+    /// Opens the log, first moving it to Unwalled.old.log once it's past 2 MB.
+    private static func open() -> FileHandle? {
         let fm = FileManager.default
         try? fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // Keep one previous log once this one grows past 2 MB.
         if let size = (try? fm.attributesOfItem(atPath: file.path))?[.size] as? Int, size > maxBytes {
             let old = file.deletingPathExtension().appendingPathExtension("old.log")
             try? fm.removeItem(at: old)
@@ -76,7 +79,7 @@ enum Log {
         let h = try? FileHandle(forWritingTo: file)
         _ = try? h?.seekToEnd()
         return h
-    }()
+    }
     private static let stamp: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -87,6 +90,27 @@ enum Log {
         print("[Unwalled] \(message)")
         fflush(stdout)
         let line = "\(stamp.string(from: Date())) \(message)\n"
-        queue.async { handle?.write(Data(line.utf8)) }
+        queue.async {
+            // Check the size now and then, not only at launch, so a long run can't grow it without limit.
+            writes += 1
+            if writes % 500 == 0 {
+                try? handle?.close()
+                handle = open()
+            }
+            try? handle?.write(contentsOf: Data(line.utf8))
+        }
+    }
+}
+
+/// Names that come from the phone and become file names on this Mac.
+enum SafeName {
+    /// A plain file name: no folders, not "." or "..", so it can't point outside its folder.
+    static func isPlainFile(_ name: String) -> Bool {
+        !name.isEmpty && name != "." && name != ".." && !name.contains("\0") && (name as NSString).lastPathComponent == name
+    }
+
+    /// An Android package name ("com.whatsapp"); anything else could be a path.
+    static func isPackage(_ name: String) -> Bool {
+        name != "." && name != ".." && name.range(of: "^[A-Za-z0-9._]+$", options: .regularExpression) != nil
     }
 }

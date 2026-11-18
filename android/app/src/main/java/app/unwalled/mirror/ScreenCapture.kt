@@ -147,6 +147,7 @@ class ScreenCaptureService : Service() {
     private var display: VirtualDisplay? = null
     private var codec: MediaCodec? = null
     private var socket: SSLSocket? = null
+    @Volatile private var rawSocket: Socket? = null
     private var out: DataOutputStream? = null
     private val thread = HandlerThread("screen-capture").apply { start() }
     private val handler = Handler(thread.looper)
@@ -221,8 +222,10 @@ class ScreenCaptureService : Service() {
         val mac = PairingStore(this).mac ?: return@post
         try {
             val raw = Socket().apply { connect(InetSocketAddress(mac.host, mac.port + ScreenMirror.VIDEO_PORT_OFFSET), 5_000); tcpNoDelay = true }
+            rawSocket = raw
             val ssl = Identity.sslContext(mac.fingerprint).socketFactory.createSocket(raw, mac.host, raw.port, true) as SSLSocket
             ssl.enabledProtocols = arrayOf("TLSv1.3")
+            ssl.soTimeout = 5_000
             ssl.startHandshake()
             socket = ssl
             out = DataOutputStream(BufferedOutputStream(ssl.outputStream, 256 * 1024))
@@ -428,6 +431,9 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        // A write stuck on a dead network holds the capture thread; closing the raw socket from here
+        // unblocks it, so the session really ends (payment apps rely on that).
+        runCatching { rawSocket?.close() }
         getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
         handler.post {
             stopStreaming()

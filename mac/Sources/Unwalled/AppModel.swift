@@ -37,6 +37,8 @@ struct PairingSession {
 @MainActor
 @Observable
 final class AppModel {
+    static let shared = AppModel()
+
     enum LinkState { case notPaired, waiting, connected }
 
     static let pairingWindow: TimeInterval = 5 * 60
@@ -177,7 +179,8 @@ final class AppModel {
         guard allow else {
             conn.send("pair.result", ["ok": false, "reason": "denied"], replyTo: request.id)
             conn.close()
-            pairing?.request = nil
+            // The code was seen and refused; it doesn't get a second try.
+            cancelPairing()
             return
         }
         let phone = PairedPhone(name: request.name, model: request.model,
@@ -226,6 +229,9 @@ final class AppModel {
     private func forget() {
         notifications = []
         relay.removeAll()
+        messages.clearCache()
+        calls.clearCache()
+        try? FileManager.default.removeItem(at: AppPaths.support.appendingPathComponent("Captures", isDirectory: true))
         try? FileManager.default.removeItem(at: pairedFile)
         paired = nil
         server?.setPinned(nil)
@@ -264,7 +270,7 @@ final class AppModel {
                 conn.close()
                 return
             }
-            guard body["token"] as? String == session.token, Date() < session.expires else {
+            guard session.request == nil, body["token"] as? String == session.token, Date() < session.expires else {
                 conn.send("pair.result", ["ok": false, "reason": "bad_token"], replyTo: id)
                 conn.close()
                 return
@@ -317,7 +323,7 @@ final class AppModel {
             guard let key = body["key"] as? String else { break }
             notifications.removeAll { $0.id == key }
             relay.removed(key)
-            Log.info("notif.removed \(key.prefix(24))…")
+            Log.info("notif.removed")
 
         case "call.state" where isPaired:
             calls.update(body)

@@ -63,52 +63,57 @@ class AudioCapture(
                 .build()
         }.getOrElse { Log.w(TAG, "Couldn't start sound capture: ${it.message}"); running = false; return }
 
-        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-        encoder.configure(MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, SAMPLE_RATE, 2).apply {
-            setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-            setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
-            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, FRAME_BYTES * 2)
-        }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        encoder.start()
-        record.startRecording()
-        Log.i(TAG, "Sound capture started")
-
-        val pcm = ByteArray(FRAME_BYTES)
-        val info = MediaCodec.BufferInfo()
+        var encoder: MediaCodec? = null
         try {
-            while (running) {
-                val n = record.read(pcm, 0, pcm.size)
-                if (n <= 0) continue
-                // Timestamps on the same clock as the video encoder's, so the Mac can line them up.
-                val pts = System.nanoTime() / 1_000
-                val inIndex = encoder.dequeueInputBuffer(10_000)
-                if (inIndex >= 0) {
-                    encoder.getInputBuffer(inIndex)?.apply { clear(); put(pcm, 0, n) }
-                    encoder.queueInputBuffer(inIndex, 0, n, pts, 0)
-                }
-                while (true) {
-                    val outIndex = encoder.dequeueOutputBuffer(info, 0)
-                    if (outIndex < 0) break
-                    val buffer = encoder.getOutputBuffer(outIndex)
-                    if (buffer != null && info.size > 0) {
-                        val bytes = ByteArray(info.size)
-                        buffer.position(info.offset)
-                        buffer.get(bytes)
-                        val config = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
-                        send(if (config) 4 else 5, info.presentationTimeUs, bytes)
-                    }
-                    encoder.releaseOutputBuffer(outIndex, false)
-                }
+            // Setup can fail too (e.g. sharing stopped at that moment); it must not crash the app.
+            encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {
+                configure(MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, SAMPLE_RATE, 2).apply {
+                    setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                    setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
+                    setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, FRAME_BYTES * 2)
+                }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                start()
             }
+            record.startRecording()
+            Log.i(TAG, "Sound capture started")
+            pump(record, encoder)
         } catch (e: Exception) {
             Log.w(TAG, "Sound capture stopped: ${e.message}")
         } finally {
             runCatching { record.stop() }
             record.release()
-            runCatching { encoder.stop() }
-            encoder.release()
+            encoder?.let { runCatching { it.stop() }; it.release() }
             running = false
             Log.i(TAG, "Sound capture ended")
+        }
+    }
+
+    private fun pump(record: AudioRecord, encoder: MediaCodec) {
+        val pcm = ByteArray(FRAME_BYTES)
+        val info = MediaCodec.BufferInfo()
+        while (running) {
+            val n = record.read(pcm, 0, pcm.size)
+            if (n <= 0) continue
+            // Timestamps on the same clock as the video encoder's, so the Mac can line them up.
+            val pts = System.nanoTime() / 1_000
+            val inIndex = encoder.dequeueInputBuffer(10_000)
+            if (inIndex >= 0) {
+                encoder.getInputBuffer(inIndex)?.apply { clear(); put(pcm, 0, n) }
+                encoder.queueInputBuffer(inIndex, 0, n, pts, 0)
+            }
+            while (true) {
+                val outIndex = encoder.dequeueOutputBuffer(info, 0)
+                if (outIndex < 0) break
+                val buffer = encoder.getOutputBuffer(outIndex)
+                if (buffer != null && info.size > 0) {
+                    val bytes = ByteArray(info.size)
+                    buffer.position(info.offset)
+                    buffer.get(bytes)
+                    val config = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                    send(if (config) 4 else 5, info.presentationTimeUs, bytes)
+                }
+                encoder.releaseOutputBuffer(outIndex, false)
+            }
         }
     }
 

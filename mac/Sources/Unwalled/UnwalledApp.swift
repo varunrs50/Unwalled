@@ -3,7 +3,9 @@ import SwiftUI
 @main
 struct UnwalledApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
-    @State private var model = AppModel()
+    // One model for the app's lifetime: SwiftUI may create this struct more than once, and each
+    // AppModel starts the server, so a second one would fight the first for the port.
+    private let model = AppModel.shared
 
     var body: some Scene {
         MenuBarExtra {
@@ -41,8 +43,17 @@ struct UnwalledApp: App {
     }
 
     init() {
-        let model = _model.wrappedValue
-        AppDelegate.openTel = { number in model.calls.dial(number) }
+        let model = self.model
+        AppDelegate.openTel = { number in
+            // A link can come from any email or web page, so ask before the phone places a call.
+            let alert = NSAlert()
+            alert.messageText = "Call \(number)?"
+            alert.informativeText = "Unwalled will dial it on \(model.paired?.name ?? "your phone")."
+            alert.addButton(withTitle: "Call")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate()
+            if alert.runModal() == .alertFirstButtonReturn { model.calls.dial(number) }
+        }
         #if DEBUG
         if CommandLine.arguments.contains("--pair") {
             DispatchQueue.main.async { model.startPairing() }
