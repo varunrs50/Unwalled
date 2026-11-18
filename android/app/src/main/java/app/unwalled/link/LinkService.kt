@@ -441,6 +441,8 @@ class LinkService : Service() {
                         wake.trySend(Unit)
                     }
                 }
+            } catch (_: java.net.SocketException) {
+                // onDestroy closed the socket: the normal way this loop ends.
             } finally {
                 socket.close()
             }
